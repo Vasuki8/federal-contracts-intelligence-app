@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     stripe_secret_key: SecretStr | None = None
     stripe_webhook_secret: SecretStr | None = None
     auth_secret: SecretStr | None = None
+    admin_password: SecretStr | None = None
     raw_archive_dir: Path = Path("data/raw")
     # SAM.gov daily request limit for this account's API key (10 without a role).
     sam_daily_request_limit: int = 10

@@ -46,3 +46,25 @@ export function driverFailingWith(message: string): Driver {
     }
   })();
 }
+
+/** A driver that records each query's SQL and parameters, answering with `rowsFor(sql)`. */
+export function recordingDriver(
+  rowsFor: (sql: string) => Record<string, unknown>[] = () => [],
+): { driver: Driver; queries: { sql: string; parameters: readonly unknown[] }[] } {
+  const queries: { sql: string; parameters: readonly unknown[] }[] = [];
+  const connection: DatabaseConnection = {
+    executeQuery: <R>(query: { sql: string; parameters: readonly unknown[] }) => {
+      queries.push({ sql: query.sql, parameters: query.parameters });
+      return Promise.resolve({ rows: rowsFor(query.sql) } as QueryResult<R>);
+    },
+    streamQuery: () => {
+      throw new Error("streamQuery is not supported by the fake driver");
+    },
+  };
+  const driver = new (class extends DummyDriver {
+    override acquireConnection(): Promise<DatabaseConnection> {
+      return Promise.resolve(connection);
+    }
+  })();
+  return { driver, queries };
+}

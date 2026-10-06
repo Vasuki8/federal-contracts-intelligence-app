@@ -48,6 +48,7 @@ def test_env_status_lists_every_setting(clean_env: pytest.MonkeyPatch) -> None:
         "SAM_API_KEY",
         "ANTHROPIC_API_KEY",
         "ANTHROPIC_MODEL",
+        "ADMIN_PASSWORD",
         "RESEND_API_KEY",
         "STRIPE_SECRET_KEY",
         "STRIPE_WEBHOOK_SECRET",
