@@ -1,0 +1,154 @@
+{
+    "totalRecords": 5127,
+    "limit": 3,
+    "offset": 0,
+    "opportunitiesData": [
+        {
+            "active": "Yes",
+            "additionalInfoLink": null,
+            "archiveDate": "2026-11-12",
+            "archiveType": "autocustom",
+            "award": null,
+            "baseType": "Combined Synopsis/Solicitation",
+            "classificationCode": "65",
+            "description": "https://api.sam.gov/prod/opportunities/v1/noticedesc?noticeid=e881d2d441914f1b8e3c3d2f5467a514",
+            "fullParentPathCode": "097.97AS.DLA TRP SUPT MED.SPE2DS",
+            "fullParentPathName": "DEPT OF DEFENSE.DEFENSE LOGISTICS AGENCY.TROOP SUPPORT MEDICAL.DLA TROOP SUPPORT",
+            "links": [
+                {
+                    "rel": "self",
+                    "href": "https://api.sam.gov/prod/opportunities/v2/search?noticeid=e881d2d441914f1b8e3c3d2f5467a514&limit=1"
+                }
+            ],
+            "naicsCode": "339112",
+            "naicsCodes": [
+                "339112"
+            ],
+            "noticeId": "e881d2d441914f1b8e3c3d2f5467a514",
+            "officeAddress": {
+                "zipcode": "19111",
+                "city": "PHILADELPHIA",
+                "countryCode": "USA",
+                "state": "PA"
+            },
+            "organizationType": "OFFICE",
+            "placeOfPerformance": null,
+            "pointOfContact": [
+                {
+                    "type": "primary",
+                    "email": "DibbsBSM@dla.mil",
+                    "fullName": "Questions regarding this solicitation should be emailed to the buyer listed in block 5 of the solicitation document which can be found under the Additional Information link.\nIf the Additional Information link does not work, please go to https://www.dibbs.bsm.dla.mil/Solicitations/ and type the solicitation number in the Global Search box.\n"
+                }
+            ],
+            "postedDate": "2026-10-06",
+            "resourceLinks": null,
+            "responseDeadLine": "2026-10-13",
+            "solicitationNumber": "SPE2DS27T0429",
+            "title": "65--CASE,MEDICAL INSTRUMEN",
+            "type": "Combined Synopsis/Solicitation",
+            "typeOfSetAside": null,
+            "typeOfSetAsideDescription": null,
+            "uiLink": "https://sam.gov/workspace/contract/opp/e881d2d441914f1b8e3c3d2f5467a514/view"
+        },
+        {
+            "active": "Yes",
+            "additionalInfoLink": null,
+            "archiveDate": "2026-11-18",
+            "archiveType": "autocustom",
+            "award": null,
+            "baseType": "Combined Synopsis/Solicitation",
+            "classificationCode": "30",
+            "description": "https://api.sam.gov/prod/opportunities/v1/noticedesc?noticeid=daad1ac78d1948edb65592cdada4ca9d",
+            "fullParentPathCode": "097.97AS.DLA LAND.DLA LAND COLUMBUS.SPE7L1",
+            "fullParentPathName": "DEPT OF DEFENSE.DEFENSE LOGISTICS AGENCY.DLA LAND.DLA LAND COLUMBUS.DLA LAND AND MARITIME",
+            "links": [
+                {
+                    "rel": "self",
+                    "href": "https://api.sam.gov/prod/opportunities/v2/search?noticeid=daad1ac78d1948edb65592cdada4ca9d&limit=1"
+                }
+            ],
+            "naicsCode": "333613",
+            "naicsCodes": [
+                "333613"
+            ],
+            "noticeId": "daad1ac78d1948edb65592cdada4ca9d",
+            "officeAddress": {
+                "zipcode": "43218-3990",
+                "city": "COLUMBUS",
+                "countryCode": "USA",
+                "state": "OH"
+            },
+            "organizationType": "OFFICE",
+            "placeOfPerformance": null,
+            "pointOfContact": [
+                {
+                    "type": "primary",
+                    "email": "DibbsBSM@dla.mil",
+                    "fullName": "Questions regarding this solicitation should be emailed to the buyer listed in block 5 of the solicitation document which can be found under the Additional Information link.\nIf the Additional Information link does not work, please go to https://www.dibbs.bsm.dla.mil/Solicitations/ and type the solicitation number in the Global Search box.\n"
+                }
+            ],
+            "postedDate": "2026-10-06",
+            "resourceLinks": null,
+            "responseDeadLine": "2026-10-19",
+            "solicitationNumber": "SPE7L127T0294",
+            "title": "30--HOUSING,MECHANICAL DRI",
+            "type": "Combined Synopsis/Solicitation",
+            "typeOfSetAside": "SBA",
+            "typeOfSetAsideDescription": "Small Business Set Aside - Total",
+            "uiLink": "https://sam.gov/workspace/contract/opp/daad1ac78d1948edb65592cdada4ca9d/view"
+        },
+        {
+            "active": "Yes",
+            "additionalInfoLink": null,
+            "archiveDate": "2026-11-15",
+            "archiveType": "autocustom",
+            "award": null,
+            "baseType": "Combined Synopsis/Solicitation",
+            "classificationCode": "17",
+            "description": "https://api.sam.gov/prod/opportunities/v1/noticedesc?noticeid=d9caf95c88bb4f7183b1bb7dc0b0b8a8",
+            "fullParentPathCode": "097.97AS.DLA MARITIME.DLA MARITIME COLUMBS.SPE7M2",
+            "fullParentPathName": "DEPT OF DEFENSE.DEFENSE LOGISTICS AGENCY.DLA MARITIME.DLA MARITIME COLUMBUS.DLA LAND AND MARITIME",
+            "links": [
+                {
+                    "rel": "self",
+                    "href": "https://api.sam.gov/prod/opportunities/v2/search?noticeid=d9caf95c88bb4f7183b1bb7dc0b0b8a8&limit=1"
+                }
+            ],
+            "naicsCode": "333998",
+            "naicsCodes": [
+                "333998"
+            ],
+            "noticeId": "d9caf95c88bb4f7183b1bb7dc0b0b8a8",
+            "officeAddress": {
+                "zipcode": "43218-3990",
+                "city": "COLUMBUS",
+                "countryCode": "USA",
+                "state": "OH"
+            },
+            "organizationType": "OFFICE",
+            "placeOfPerformance": null,
+            "pointOfContact": [
+                {
+                    "type": "primary",
+                    "email": "DibbsBSM@dla.mil",
+                    "fullName": "Questions regarding this solicitation should be emailed to the buyer listed in block 5 of the solicitation document which can be found under the Additional Information link.\nIf the Additional Information link does not work, please go to https://www.dibbs.bsm.dla.mil/Solicitations/ and type the solicitation number in the Global Search box.\n"
+                }
+            ],
+            "postedDate": "2026-10-06",
+            "resourceLinks": null,
+            "responseDeadLine": "2026-10-16",
+            "solicitationNumber": "SPE7M227T0015",
+            "title": "17--SUBPLATE,RETRACTION",
+            "type": "Combined Synopsis/Solicitation",
+            "typeOfSetAside": "SBA",
+            "typeOfSetAsideDescription": "Small Business Set Aside - Total",
+            "uiLink": "https://sam.gov/workspace/contract/opp/d9caf95c88bb4f7183b1bb7dc0b0b8a8/view"
+        }
+    ],
+    "links": [
+        {
+            "rel": "self",
+            "href": "https://api.sam.gov/prod/opportunities/v2/search?postedFrom=09%2F29%2F2026&postedTo=10%2F06%2F2026&limit=3&offset=0"
+        }
+    ]
+}

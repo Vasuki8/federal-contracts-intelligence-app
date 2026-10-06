@@ -107,3 +107,9 @@ The Federal Hierarchy and Entity APIs allow 10 requests/day. Agencies and office
 
 ### 2026-10-06 · Live checks run in GitHub Actions
 The SAM key lives in the `SAM_API_KEY` repository secret, and GitHub's runners can reach SAM.gov and USAspending (the cloud build environment can't). The manual workflow `.github/workflows/live-sample.yml` runs `app ingest sample-fixtures` there against a throwaway Postgres. It prints the saved fixtures to the log and uploads them, the report and the raw archive as the `live-samples` artifact. It costs 2 SAM requests and 1 small USAspending download per run. The full backfill still needs a database that outlives the run: a local machine or the production Postgres (M7).
+
+### 2026-10-06 · Live sample: fixes from real data (migration 0003)
+The first live run settled the docs' open questions (details in `data-sources.md`) and changed three things:
+- **Office code = last piece of `fullParentPathCode`.** Real paths have 2–5 levels with named middle levels (`097.97AS.DLA LAND.DLA LAND COLUMBUS.SPE7L1`). Taking the third piece would have stored "DLA LAND" as the office and broken M2's office matching.
+- **`notices.naics_codes`** stores the undocumented `naicsCodes` list. A notice counts as in the vertical if any of its codes is.
+- **`notices.response_deadline_has_time`.** Deadlines can be plain dates. They're stored at 00:00 UTC with this flag set to false, so the app shows a date and never invents a time ("never show a guess as a fact").

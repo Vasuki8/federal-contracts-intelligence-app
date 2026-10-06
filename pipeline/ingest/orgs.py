@@ -19,10 +19,13 @@ class OrgPath:
 
 
 def parse_parent_path(codes: str | None, names: str | None) -> OrgPath:
-    """Split SAM's `fullParentPathCode` ("047.4732.47QTCA") and `fullParentPathName`.
+    """Split SAM's `fullParentPathCode` and `fullParentPathName`.
 
-    Codes never contain dots, but names can ("U.S. ..."), so names are only split
-    when the piece count matches the codes; otherwise names are left empty.
+    Live data has 2 to 5 levels: department.sub-tier[.middle levels].office, e.g.
+    "097.97AS.DLA LAND.DLA LAND COLUMBUS.SPE7L1". The office code is the LAST piece
+    (with 3+ pieces); middle levels are named units without codes and are skipped.
+    Names are split only when the piece count matches the codes, because a name can
+    contain a dot ("U.S. COAST GUARD"); otherwise names are left empty.
     """
     code_parts = [clean_text(part) for part in (codes or "").split(".")] if codes else []
     name_parts = (names or "").split(".") if names else []
@@ -33,13 +36,14 @@ def parse_parent_path(codes: str | None, names: str | None) -> OrgPath:
     def at(parts: list[str | None], index: int) -> str | None:
         return parts[index] if index < len(parts) else None
 
+    has_office = len(code_parts) >= 3
     return OrgPath(
         department_code=at(code_parts, 0),
         department_name=at(named, 0),
         subtier_code=at(code_parts, 1),
         subtier_name=at(named, 1),
-        office_code=at(code_parts, 2),
-        office_name=at(named, 2),
+        office_code=code_parts[-1] if has_office else None,
+        office_name=named[-1] if has_office else None,
     )
 
 

@@ -142,6 +142,7 @@ export interface Notices {
   last_seen_at: Generated<Timestamp>;
   latest_version: Generated<number>;
   naics: string | null;
+  naics_codes: Generated<string[]>;
   notice_id: string;
   office_code: string | null;
   office_id: number | null;
@@ -151,6 +152,7 @@ export interface Notices {
   psc: string | null;
   raw_file_id: Int8 | null;
   response_deadline: Timestamp | null;
+  response_deadline_has_time: boolean | null;
   set_aside: string | null;
   set_aside_code: string | null;
   solicitation_number: string | null;

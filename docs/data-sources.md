@@ -9,9 +9,10 @@ the docs were read there:
 | SAM.gov APIs (open.gsa.gov) | `GSA/open-gsa-redesign` @ `cc568a8` (2026-10-05), `_apidocs/*.md` |
 | USAspending API contracts + download column definitions | `fedspendingtransparency/usaspending-api` @ `03b9e25` (2026-10-05) |
 
-⚠ **verify live** marks anything the docs leave unclear or contradict. Run
-`uv run app ingest sample-fixtures` as soon as the hosts are reachable. It saves real
-responses under `pipeline/tests/fixtures/**/live_*` and reports differences.
+⚠ **verify live** marks anything still unclear. **Live sample (2026-10-06):** run in
+GitHub Actions (`Live sample` workflow), saved as
+`pipeline/tests/fixtures/sam_opportunities/live_sample.json` and
+`pipeline/tests/fixtures/usaspending/live_sample.csv`. ✅ marks what it settled.
 
 ---
 
@@ -26,14 +27,14 @@ Used by `app ingest opportunities` (backfill + daily delta).
 | Required params | `api_key`; `postedFrom` and `postedTo` (format `MM/dd/yyyy`, **at most 1 year apart**) |
 | Params we use | `postedFrom`, `postedTo`, `limit`, `offset`, `ncode` (NAICS, "maximum of 6 digits") |
 | Other params | `ptype`, `solnum`, `noticeid`, `title`, `state`, `zip`, `organizationCode`, `organizationName`, `typeOfSetAside`, `typeOfSetAsideDescription`, `ccode`, `rdlfrom`/`rdlto`, `status` ("Coming Soon"); `deptname`/`subtier` deprecated |
-| Paging | `limit` max 1000 (default 1). `offset` "Indicates the page index. Default offset starts with 0". ⚠ verify live: page index vs record offset (`sample-fixtures` checks this). |
+| Paging | `limit` max 1000 (default 1). `offset` is the **page index** (next page = offset + 1). ✅ live: confirmed. |
 | Daily limit | "Request per day are limited based on the federal or non-federal or general roles." **No numbers on this page.** Other SAM APIs document 10/day (non-federal, no role) and 1,000/day (with a role, or federal). Our budget: `SAM_DAILY_REQUEST_LIMIT` (default 10), counted from `raw_files` since 00:00 UTC (⚠ verify the reset time). |
 | Errors | 404 = "No Data found" (treated as an empty page); 400 bad request; 500 server error. Messages listed for bad limit, date format, >1-year range, missing or invalid key. |
 | Versions | **"This API only provides the latest active version of the opportunity."** Older versions are only in SAM.gov Data Services extracts. |
 | Description text | `description` is a link (`.../noticedesc?noticeid=...`) that needs the API key, so **one request per notice**. Not fetched in M1. |
 | Response envelope | `totalRecords`, `limit`, `offset`, `opportunitiesData[]`, `links[]` |
 
-**Record fields** (exact names). ⚠ The field table and the example response disagree; the parser accepts both:
+**Record fields** (exact names). The field table and the example response disagree; the parser accepts both. ✅ Live responses use the **example** spellings:
 
 | Field table says | Example response says | Stored as |
 |---|---|---|
@@ -51,8 +52,21 @@ Agreed fields: `noticeId`, `title`, `solicitationNumber`, `fullParentPathName`,
 state{code,name}, country{code,name}, zip}`, `additionalInfoLink`, `uiLink`, `links`,
 `resourceLinks` (attachment URLs). Deprecated: `department`, `subTier`, `office`.
 
-⚠ verify live: response-deadline format (time zone), whether `ncode` accepts more than one
-code, and whether an amendment keeps the same `noticeId`.
+✅ Live findings (2026-10-06):
+- `postedDate` and `responseDeadLine` arrived as plain dates (`2026-10-13`). Date-only
+  deadlines are stored at 00:00 UTC with `notices.response_deadline_has_time = false`.
+  Values with a time are parsed with their offset.
+- **Undocumented `naicsCodes`** (list of strings) on every record, equal to `[naicsCode]`
+  in the sample. Stored in `notices.naics_codes`; the vertical filter checks all of them.
+- **`fullParentPathCode` has 2–5 levels**, e.g. `097.97AS.DLA LAND.DLA LAND COLUMBUS.SPE7L1`:
+  department, sub-tier, then named middle levels (no codes, may contain spaces), and the
+  **office code last**. `fullParentPathName` has the same number of pieces.
+- `uiLink` looks like `https://sam.gov/workspace/contract/opp/<noticeId>/view`.
+- Volume: 5,127 notices posted in 7 days (all NAICS), so about 730 a day and about 3
+  daily-delta pages.
+
+⚠ still to verify: whether `ncode` accepts more than one code, whether an amendment keeps
+the same `noticeId`, and when the daily request count resets.
 
 **Set-aside codes** (docs table): SBA, SBP, 8A, 8AN, HZC, HZS, SDVOSBC, SDVOSBS, WOSB, WOSBSS, EDWOSB, EDWOSBSS, LAS, IEE, ISBEE, BICiv, VSA, VSS.
 
@@ -108,9 +122,17 @@ Business-type flags: `c8a_program_participant`, `sba_certified_8a_joint_venture`
 `self_certified_small_disadvantaged_business`,
 `contracting_officers_determination_of_business_size`.
 
-⚠ verify live: boolean encoding (`t`/`f`?), date-time format, CSV file names in the zip
-(the loader finds award files by header, not name), and whether IDVs and contracts share
-one file.
+✅ Live findings (2026-10-06, 25-row sample, NAICS 541512):
+- The header is exactly the documented 286 columns, in order.
+- Business-type flags are `t`/`f`. `last_modified_date` looks like `2026-09-28 13:10:18+00`.
+  Period-of-performance end dates look like `2030-12-09 00:00:00`; dates such as
+  `period_of_performance_start_date` are `YYYY-MM-DD`. All cast correctly.
+- The CSV in the zip is named `Contracts_PrimeAwardSummaries_<timestamp>_1.csv`.
+- `awarding_agency_code` can be 3 or 4 characters (`005`, `1100`).
+- `solicitation_identifier` is often empty on task orders. This matters for M2's
+  same-solicitation link.
+
+⚠ still to verify: whether IDVs come in the same file (the sample had only `A`, `C`, `D`).
 
 Fixtures: `usaspending/docs_download_awards_response.json`,
 `docs_download_status_finished.json`, `award_d1_columns.txt`, synthetic

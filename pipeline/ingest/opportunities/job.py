@@ -91,7 +91,7 @@ class OpportunitiesJob:
             page = parse_page(payload)
             total = page.total_records
             self._report_unknown(page.unknown_fields)
-            wanted = [n for n in page.notices if n.naics in self.vertical]
+            wanted = [n for n in page.notices if n.in_naics(self.vertical)]
             result = upsert_notices(self.ctx.data, wanted, self.client.last_raw_file_id)
             seen.update(n.notice_id for n in page.notices)
             # Docs: `offset` "indicates the page index" (verify live; see data-sources.md).

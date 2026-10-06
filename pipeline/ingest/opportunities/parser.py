@@ -57,6 +57,10 @@ DOCUMENTED_FIELDS = frozenset(
     }
 )
 
+# Keys seen in live responses that the docs don't mention (first live sample, 2026-10-06).
+OBSERVED_FIELDS = frozenset({"naicsCodes"})
+KNOWN_FIELDS = DOCUMENTED_FIELDS | OBSERVED_FIELDS
+
 
 class Notice(BaseModel):
     """One notice as we store it. Field order is stable so hashes are stable."""
@@ -70,7 +74,11 @@ class Notice(BaseModel):
     base_type: str | None
     posted_at: datetime | None
     response_deadline: datetime | None
+    # False when SAM gave only a date: the deadline is then stored at 00:00 UTC on that
+    # date and must be shown as a date, never with an invented time.
+    response_deadline_has_time: bool | None
     naics: str | None
+    naics_codes: tuple[str, ...]
     psc: str | None
     set_aside_code: str | None
     set_aside: str | None
@@ -86,6 +94,10 @@ class Notice(BaseModel):
     active: bool | None
     archive_type: str | None
     archive_date: date | None
+
+    def in_naics(self, codes: frozenset[str]) -> bool:
+        """True when the primary or any listed NAICS code is in `codes`."""
+        return self.naics in codes or any(code in codes for code in self.naics_codes)
 
     def snapshot(self) -> dict[str, Any]:
         """JSON-safe dict of every field; stored per version."""
@@ -111,7 +123,7 @@ def parse_page(payload: Mapping[str, Any]) -> ParsedPage:
         if not isinstance(record, Mapping):
             page.skipped += 1
             continue
-        page.unknown_fields |= set(record) - DOCUMENTED_FIELDS
+        page.unknown_fields |= set(record) - KNOWN_FIELDS
         notice = parse_notice(record)
         if notice is None:
             page.skipped += 1
@@ -126,6 +138,8 @@ def parse_notice(record: Mapping[str, Any]) -> Notice | None:
     if notice_id is None:
         return None
     pop = _mapping(record.get("placeOfPerformance")) or None
+    naics = clean_text(record.get("naicsCode"))
+    deadline = _first(record, "responseDeadLine", "reponseDeadLine")
     return Notice(
         notice_id=notice_id,
         solicitation_number=clean_text(record.get("solicitationNumber")),
@@ -133,8 +147,10 @@ def parse_notice(record: Mapping[str, Any]) -> Notice | None:
         type=clean_text(record.get("type")),
         base_type=clean_text(record.get("baseType")),
         posted_at=parse_datetime(record.get("postedDate")),
-        response_deadline=parse_datetime(_first(record, "responseDeadLine", "reponseDeadLine")),
-        naics=clean_text(record.get("naicsCode")),
+        response_deadline=parse_datetime(deadline),
+        response_deadline_has_time=_has_time(deadline),
+        naics=naics,
+        naics_codes=tuple(_strings(record.get("naicsCodes")) or ([naics] if naics else [])),
         psc=clean_text(record.get("classificationCode")),
         set_aside_code=clean_text(_first(record, "typeOfSetAside", "setAsideCode")),
         set_aside=clean_text(_first(record, "typeOfSetAsideDescription", "setAside")),
@@ -175,6 +191,14 @@ def _contacts(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, Sequence) or isinstance(value, str):
         return []
     return [dict(item) for item in value if isinstance(item, Mapping)]
+
+
+def _has_time(value: Any) -> bool | None:
+    """Whether a date value carries a time part ("2026-10-13" → False)."""
+    if parse_datetime(value) is None:
+        return None
+    text = clean_text(value) or ""
+    return len(text) > len("YYYY-MM-DD")
 
 
 def _yes_no(value: Any) -> bool | None:
