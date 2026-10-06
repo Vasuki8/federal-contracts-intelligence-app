@@ -19,7 +19,7 @@ from pipeline.ingest.awards.client import build_client
 from pipeline.ingest.awards.job import AwardsJob, Window, fiscal_year_windows, quarters
 from pipeline.ingest.awards.parser import ALL_COLUMNS, read_award_csv, read_award_zip
 from pipeline.ingest.awards.store import load_awards
-from pipeline.ingest.context import ingest_run
+from pipeline.ingest.context import IngestContext, ingest_run
 from pipeline.tests.helpers import FIXTURES, count
 
 US = FIXTURES / "usaspending"
@@ -293,3 +293,15 @@ def test_window_helpers() -> None:
     parts = quarters(Window(date(2025, 10, 1), date(2026, 9, 30)))
     assert len(parts) == 4
     assert parts[0].start == date(2025, 10, 1) and parts[-1].end == date(2026, 9, 30)
+
+
+@pytest.mark.db
+def test_long_waits_keep_the_database_connections_alive(
+    db_url: str, conn: Conn, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[int] = []
+    monkeypatch.setattr(IngestContext, "keepalive", lambda self: calls.append(1))
+    fake = FakeUsaspending(lambda body: (zip_bytes(FY2025), 3))
+    run(db_url, tmp_path, fake, lambda job: job.backfill(1, date(2026, 9, 30)), "backfill")
+    # Each chunk polls once while "running", streams the file, then loads it.
+    assert len(calls) >= 6

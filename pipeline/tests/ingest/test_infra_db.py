@@ -154,3 +154,53 @@ def test_org_upsert_is_idempotent_and_keeps_known_names(conn: Conn) -> None:
     row = conn.execute("SELECT name FROM offices").fetchone()
     assert row == ("IT CENTER",)
     assert upsert_org_path(conn, OrgPath("047", "GSA")) is None
+
+
+def txn_status(conn: Conn) -> psycopg.pq.TransactionStatus:
+    return conn.info.transaction_status
+
+
+def test_keepalive_pings_idle_connections_without_losing_work(db_url: str, tmp_path: Path) -> None:
+    now = [0.0]
+    with ingest_run(db_url, tmp_path, "src", "x", {}, lambda _: None) as ctx:
+        ctx.clock = lambda: now[0]
+        ctx._last_ping = 0.0
+        ctx.data.execute("INSERT INTO naics (code) VALUES ('111111')")  # uncommitted work
+        now[0] = 61.0
+        ctx.keepalive()
+        assert txn_status(ctx.data) == psycopg.pq.TransactionStatus.INTRANS
+        ctx.data.commit()
+        now[0] = 200.0
+        ctx.keepalive()  # leaves no empty transaction open behind the ping
+        assert txn_status(ctx.data) == psycopg.pq.TransactionStatus.IDLE
+    with psycopg.connect(db_url) as check:
+        assert check.execute("SELECT 1 FROM naics WHERE code = '111111'").fetchone()
+
+
+def test_runs_left_running_are_marked_failed_by_the_next_run(
+    db_url: str, conn: Conn, tmp_path: Path
+) -> None:
+    start_run(conn, "src", "backfill", {})  # a run whose process died mid-way
+    logs: list[str] = []
+    with ingest_run(db_url, tmp_path, "src", "backfill", {}, logs.append):
+        pass
+    rows = conn.execute("SELECT status, error FROM ingest_runs ORDER BY id").fetchall()
+    assert [r[0] for r in rows] == ["failed", "succeeded"]
+    assert rows[0][1].startswith("Interrupted")
+    assert any("Marked 1 earlier" in line for line in logs)
+
+
+def test_a_failure_is_recorded_even_when_the_connections_died(
+    db_url: str, conn: Conn, tmp_path: Path
+) -> None:
+    with (
+        pytest.raises(RuntimeError, match="database had gone"),
+        ingest_run(db_url, tmp_path, "src", "backfill", {}, lambda _: None) as ctx,
+    ):
+        ctx.meta.close()
+        ctx.data.close()
+        raise RuntimeError("the file was ready, but the database had gone")
+    row = conn.execute("SELECT status, error FROM ingest_runs").fetchone()
+    assert row is not None
+    assert row[0] == "failed"
+    assert "RuntimeError" in row[1]

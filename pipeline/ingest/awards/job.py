@@ -124,6 +124,7 @@ class AwardsJob:
         work_dir = self.ctx.archive_root / ".tmp" / "extract"
         for frame in read_award_zip(self.ctx.archive_root / Path(download.file.path), work_dir):
             self._report_missing(frame.missing_columns)
+            self.ctx.keepalive()
             result = load_awards(self.ctx.data, frame.frame, download.file.id, self.vertical)
             rows_in += result.rows_in
             written += result.awards_upserted

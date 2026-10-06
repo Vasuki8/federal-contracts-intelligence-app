@@ -122,3 +122,12 @@ Chunk keys contain dates, so a backfill must keep its dates across days or a res
 
 ### 2026-10-06 · Interim raw archive: run artifacts
 GitHub runners are ephemeral, so each Ingest run uploads its `data/raw/` as the artifact `raw-archive-<run_id>`, kept 90 days. `raw_files.path` stays relative to that run's archive. Permanent object storage (S3-compatible, e.g. Cloudflare R2) is the M7 item and should come before 90 days pass, or the earliest raw files will be lost. The repository is public, so these artifacts are public (public government data).
+
+### 2026-10-06 · Keep hosted-DB connections alive through slow upstream waits
+The first awards backfill on Neon failed with "the connection is closed". USAspending took about 17 minutes to build the FY2026 file, and the job's idle connections were dropped meanwhile. Neon scales an idle compute to zero after a few minutes by default. Fixes:
+- `IngestContext.keepalive()` pings both connections at most once a minute. It's called while polling USAspending, while streaming a download, and before loading each file. It never ends a transaction that holds work.
+- libpq TCP keepalives are on.
+- A run's result is recorded on a fresh connection if the old one died, and cleanup no longer replaces the original error with a "connection closed" one.
+- Starting a job marks earlier runs of it still `running` as failed. While the job's lock is held, no such run can be alive.
+
+The pending download had already been checkpointed, so the re-run collects the finished file instead of waiting again.

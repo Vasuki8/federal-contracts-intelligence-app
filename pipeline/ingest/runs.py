@@ -1,5 +1,6 @@
 """Run bookkeeping: `ingest_runs` rows, per-job locks and resumable chunk checkpoints."""
 
+import contextlib
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -44,7 +45,27 @@ def job_lock(conn: psycopg.Connection[TupleRow], source: str, job: str) -> Itera
     try:
         yield
     finally:
-        conn.execute("SELECT pg_advisory_unlock(hashtextextended(%s, 0))", (key,))
+        # If the session is gone, Postgres has already released its locks.
+        if not conn.closed:
+            with contextlib.suppress(psycopg.OperationalError):
+                conn.execute("SELECT pg_advisory_unlock(hashtextextended(%s, 0))", (key,))
+
+
+STALE_RUN_ERROR = "Interrupted: the run ended without recording a result."
+
+
+def fail_stale_runs(conn: psycopg.Connection[TupleRow], source: str, job: str) -> int:
+    """Mark earlier runs of this job still 'running' as failed. Call only while holding the
+    job's lock: then no other run of it can be alive."""
+    cursor = conn.execute(
+        """
+        UPDATE ingest_runs SET status = 'failed', finished_at = now(),
+            error = coalesce(error, %s)
+        WHERE source = %s AND job = %s AND status = 'running'
+        """,
+        (STALE_RUN_ERROR, source, job),
+    )
+    return cursor.rowcount
 
 
 def start_run(

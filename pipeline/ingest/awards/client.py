@@ -107,6 +107,7 @@ class AwardsClient:
                 )
             if waited >= self._poll_timeout:
                 raise DownloadFailed(f"{file_name} was not ready after {waited:.0f}s")
+            self._ctx.keepalive()
             self._sleep(delay)
             waited += delay
             delay = min(delay * 1.5, 60.0)
@@ -147,6 +148,7 @@ class AwardsClient:
                     with target.open("wb") as out:
                         for block in response.iter_bytes():
                             out.write(block)
+                            self._ctx.keepalive()
                     self._ctx.run.counters.requests_made += 1
                     return response.status_code
             except (_Retry, httpx.TransportError) as exc:

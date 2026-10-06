@@ -1,8 +1,10 @@
 """Shared plumbing for ingest jobs: connections, the current run, response archiving."""
 
+import contextlib
+import time
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -14,9 +16,13 @@ from psycopg.types.json import Jsonb
 from pipeline.db import connect
 from pipeline.ingest.archive import ArchivedFile, archive_bytes
 from pipeline.ingest.budget import BudgetExhausted
-from pipeline.ingest.runs import Run, finish_run, job_lock, start_run
+from pipeline.ingest.runs import Run, RunStatus, fail_stale_runs, finish_run, job_lock, start_run
 
 Log = Callable[[str], None]
+
+# Hosted Postgres (Neon) drops connections that sit idle while we wait on a slow upstream
+# (a USAspending file can take 15+ minutes to build), so long waits ping both connections.
+KEEPALIVE_SECONDS = 60.0
 
 
 @dataclass
@@ -29,6 +35,21 @@ class IngestContext:
     archive_root: Path
     run: Run
     log: Log
+    clock: Callable[[], float] = time.monotonic
+    _last_ping: float = field(default_factory=time.monotonic)
+
+    def keepalive(self) -> None:
+        """Ping both connections if they've been idle for KEEPALIVE_SECONDS. Never ends
+        an open transaction that holds work; only the empty one the ping itself opens."""
+        now = self.clock()
+        if now - self._last_ping < KEEPALIVE_SECONDS:
+            return
+        self.meta.execute("SELECT 1")
+        was_idle = self.data.info.transaction_status == psycopg.pq.TransactionStatus.IDLE
+        self.data.execute("SELECT 1")
+        if was_idle:
+            self.data.rollback()
+        self._last_ping = now
 
 
 class ResponseArchiver:
@@ -89,20 +110,44 @@ def ingest_run(
         connect(database_url) as data,
         job_lock(meta, source, job),
     ):
+        stale = fail_stale_runs(meta, source, job)
+        if stale:
+            log(f"Marked {stale} earlier '{source} {job}' run(s) that never finished as failed.")
         run = start_run(meta, source, job, params)
         ctx = IngestContext(meta=meta, data=data, archive_root=archive_root, run=run, log=log)
         try:
             yield ctx
         except BudgetExhausted as exc:
-            data.rollback()
+            _rollback_quietly(data)
             log(str(exc))
-            finish_run(meta, run, "partial", error=str(exc))
+            _finish(database_url, meta, run, "partial", str(exc))
         except BaseException as exc:
-            data.rollback()
-            finish_run(meta, run, "failed", error=f"{type(exc).__name__}: {exc}")
+            _rollback_quietly(data)
+            _finish(database_url, meta, run, "failed", f"{type(exc).__name__}: {exc}")
             raise
         else:
-            finish_run(meta, run, "succeeded")
+            _finish(database_url, meta, run, "succeeded", None)
+
+
+def _rollback_quietly(conn: psycopg.Connection[TupleRow]) -> None:
+    """Roll back if the connection is still alive; a dead one has nothing to roll back."""
+    with contextlib.suppress(psycopg.Error):
+        conn.rollback()
+
+
+def _finish(
+    database_url: str,
+    meta: psycopg.Connection[TupleRow],
+    run: Run,
+    status: RunStatus,
+    error: str | None,
+) -> None:
+    """Record the run's result, on a fresh connection if `meta` has been dropped."""
+    try:
+        finish_run(meta, run, status, error=error)
+    except psycopg.Error:
+        with connect(database_url, autocommit=True) as fresh:
+            finish_run(fresh, run, status, error=error)
 
 
 def update_run_params(ctx: IngestContext, params: Mapping[str, Any]) -> None:
