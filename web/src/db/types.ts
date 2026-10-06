@@ -3,10 +3,204 @@
  * Please do not edit it manually.
  */
 
+import type { ColumnType } from "kysely";
+
+export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
+  ? ColumnType<S, I | undefined, U>
+  : ColumnType<T, T | undefined, T>;
+
+export type Int8 = ColumnType<string, bigint | number | string, bigint | number | string>;
+
+export type Json = JsonValue;
+
+export type JsonArray = JsonValue[];
+
+export type JsonObject = {
+  [x: string]: JsonValue | undefined;
+};
+
+export type JsonPrimitive = boolean | number | string | null;
+
+export type JsonValue = JsonArray | JsonObject | JsonPrimitive;
+
+export type Numeric = ColumnType<string, number | string, number | string>;
+
+export type Timestamp = ColumnType<Date, Date | string, Date | string>;
+
+export interface Agencies {
+  code: string;
+  id: Generated<number>;
+  level: string;
+  name: string | null;
+  parent_code: string | null;
+  updated_at: Generated<Timestamp>;
+}
+
 export interface AlembicVersion {
   version_num: string;
 }
 
+export interface Awards {
+  award_key: string;
+  award_type: string | null;
+  award_type_code: string | null;
+  awarding_agency_code: string | null;
+  awarding_agency_name: string | null;
+  awarding_office_code: string | null;
+  awarding_office_name: string | null;
+  awarding_sub_agency_code: string | null;
+  awarding_sub_agency_name: string | null;
+  base_action_date: Timestamp | null;
+  current_end: Timestamp | null;
+  current_total_value: Numeric | null;
+  description: string | null;
+  extent_competed_code: string | null;
+  idv_type_code: string | null;
+  last_modified: Timestamp | null;
+  latest_action_date: Timestamp | null;
+  naics: string | null;
+  number_of_offers: number | null;
+  obligated_total: Numeric | null;
+  office_id: number | null;
+  ordering_period_end: Timestamp | null;
+  piid: string | null;
+  piid_norm: Generated<string | null>;
+  pop_start: Timestamp | null;
+  psc: string | null;
+  raw_file_id: Int8 | null;
+  recipient_name: string | null;
+  recipient_uei: string | null;
+  referenced_idv_piid: string | null;
+  set_aside: string | null;
+  set_aside_code: string | null;
+  solicitation_id: string | null;
+  solicitation_id_norm: Generated<string | null>;
+  total_value: Numeric | null;
+  ultimate_end: Timestamp | null;
+  updated_at: Generated<Timestamp>;
+  usaspending_url: string | null;
+}
+
+export interface Entities {
+  business_types: Generated<Json>;
+  cage: string | null;
+  last_modified: Timestamp | null;
+  name: string | null;
+  parent_name: string | null;
+  parent_uei: string | null;
+  state: string | null;
+  uei: string;
+  updated_at: Generated<Timestamp>;
+}
+
+export interface IngestChunks {
+  chunk_key: string;
+  rows_in: Generated<number>;
+  rows_upserted: Generated<number>;
+  run_id: Int8 | null;
+  source: string;
+  state: Generated<Json>;
+  status: string;
+  updated_at: Generated<Timestamp>;
+}
+
+export interface IngestRuns {
+  error: string | null;
+  finished_at: Timestamp | null;
+  id: Generated<Int8>;
+  job: string;
+  params: Generated<Json>;
+  requests_made: Generated<number>;
+  rows_in: Generated<number>;
+  rows_upserted: Generated<number>;
+  source: string;
+  started_at: Generated<Timestamp>;
+  status: Generated<string>;
+}
+
+export interface Naics {
+  code: string;
+  in_vertical: Generated<boolean>;
+  title: string | null;
+  updated_at: Generated<Timestamp>;
+}
+
+export interface Notices {
+  active: boolean | null;
+  archive_date: Timestamp | null;
+  archive_type: string | null;
+  attachment_links: Generated<Json>;
+  award: Json | null;
+  base_type: string | null;
+  contacts: Generated<Json>;
+  content_hash: string;
+  department_code: string | null;
+  description_url: string | null;
+  first_seen_at: Generated<Timestamp>;
+  full_parent_path_code: string | null;
+  full_parent_path_name: string | null;
+  last_seen_at: Generated<Timestamp>;
+  latest_version: Generated<number>;
+  naics: string | null;
+  notice_id: string;
+  office_code: string | null;
+  office_id: number | null;
+  place_of_performance: Json | null;
+  pop_state: string | null;
+  posted_at: Timestamp | null;
+  psc: string | null;
+  raw_file_id: Int8 | null;
+  response_deadline: Timestamp | null;
+  set_aside: string | null;
+  set_aside_code: string | null;
+  solicitation_number: string | null;
+  solicitation_number_norm: Generated<string | null>;
+  subtier_code: string | null;
+  title: string | null;
+  type: string | null;
+  ui_link: string | null;
+}
+
+export interface NoticeVersions {
+  diff: Json | null;
+  fetched_at: Generated<Timestamp>;
+  id: Generated<Int8>;
+  notice_id: string;
+  raw_file_id: Int8 | null;
+  snapshot: Json;
+  version: number;
+}
+
+export interface Offices {
+  id: Generated<number>;
+  name: string | null;
+  office_code: string;
+  subtier_code: string;
+  updated_at: Generated<Timestamp>;
+}
+
+export interface RawFiles {
+  bytes: Int8;
+  fetched_at: Generated<Timestamp>;
+  http_status: number | null;
+  id: Generated<Int8>;
+  path: string;
+  request_params: Generated<Json>;
+  run_id: Int8 | null;
+  sha256: string;
+  source: string;
+}
+
 export interface DB {
+  agencies: Agencies;
   alembic_version: AlembicVersion;
+  awards: Awards;
+  entities: Entities;
+  ingest_chunks: IngestChunks;
+  ingest_runs: IngestRuns;
+  naics: Naics;
+  notice_versions: NoticeVersions;
+  notices: Notices;
+  offices: Offices;
+  raw_files: RawFiles;
 }

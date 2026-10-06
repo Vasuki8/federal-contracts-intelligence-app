@@ -53,6 +53,7 @@ def test_env_status_lists_every_setting(clean_env: pytest.MonkeyPatch) -> None:
         "STRIPE_WEBHOOK_SECRET",
         "AUTH_SECRET",
         "RAW_ARCHIVE_DIR",
+        "SAM_DAILY_REQUEST_LIMIT",
     }
 
 

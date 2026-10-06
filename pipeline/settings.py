@@ -36,11 +36,23 @@ class Settings(BaseSettings):
     stripe_webhook_secret: SecretStr | None = None
     auth_secret: SecretStr | None = None
     raw_archive_dir: Path = Path("data/raw")
+    # SAM.gov daily request limit for this account's API key (10 without a role).
+    sam_daily_request_limit: int = 10
 
     def require_database_url(self) -> str:
         if self.database_url is None:
             raise MissingSettingError("DATABASE_URL")
         return self.database_url.get_secret_value()
+
+    def require_sam_api_key(self) -> str:
+        if self.sam_api_key is None:
+            raise MissingSettingError("SAM_API_KEY")
+        return self.sam_api_key.get_secret_value()
+
+    def raw_archive_path(self) -> Path:
+        """RAW_ARCHIVE_DIR, resolved against the repo root when relative."""
+        path = self.raw_archive_dir
+        return path if path.is_absolute() else REPO_ROOT / path
 
     def env_status(self) -> dict[str, bool]:
         """Map each env var name to whether it is set. Never includes values."""

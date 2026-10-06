@@ -74,17 +74,22 @@ cp .env.example .env                 # first time only
 docker compose up -d db              # local Postgres 16 (+ fci_test DB for pytest)
 uv sync                              # Python deps
 uv run alembic upgrade head          # migrate
-uv run alembic revision --rev-id 0002 -m "..."   # new migration (sequential ids)
+uv run alembic revision --rev-id 0003 -m "..."   # next migration (sequential ids)
 uv run app doctor                    # settings, DB connection, migration status
+uv run app status                    # last run + errors per job, backfill progress, row counts
 uv run ruff check && uv run ruff format --check && uv run mypy
 uv run pytest
 cd web && pnpm dev | pnpm test | pnpm lint | pnpm typecheck | pnpm build
 cd web && pnpm db:codegen            # regenerate src/db/types.ts after a migration
 ./scripts/check.sh                   # run every CI check locally
 
+uv run app ingest sample-fixtures    # first live run: save real fixtures, compare with docs
+uv run app ingest awards-backfill --years 5          # USAspending, resumable
+uv run app ingest awards-delta                       # daily
+uv run app ingest opportunities                      # daily SAM delta (run before backfill)
+uv run app ingest opportunities --backfill           # 12 months (or --since 2025-10-01), resumable
+
 # Planned (not built yet):
-uv run app ingest opportunities --since 2025-10-01   # M1
-uv run app ingest awards-backfill --years 5          # M1
 uv run app match notices                             # M2
 uv run app recompetes refresh                        # M2
 ```

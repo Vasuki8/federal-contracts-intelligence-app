@@ -1,0 +1,17 @@
+# Verticals the app covers. Ingest jobs filter notices and awards to these NAICS codes.
+# Codes only: NAICS titles are loaded from USAspending award data into the `naics` table.
+verticals:
+  - key: it_professional_services
+    name: IT and professional services
+    naics:
+      - "541511"
+      - "541512"
+      - "541513"
+      - "541519"
+      - "518210"
+      - "541611"
+      - "541612"
+      - "541618"
+      - "541690"
+      - "541330"
+      - "541990"

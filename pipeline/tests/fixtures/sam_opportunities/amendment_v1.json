@@ -1,0 +1,68 @@
+{
+    "totalRecords": 1,
+    "limit": 1000,
+    "offset": 0,
+    "opportunitiesData": [
+        {
+            "noticeId": "synthetic0000000000000000amend001",
+            "title": "IT Help Desk Support Services",
+            "solicitationNumber": "47QTCA-26-R-0001",
+            "fullParentPathName": "GENERAL SERVICES ADMINISTRATION.FEDERAL ACQUISITION SERVICE.GSA/FAS CENTER FOR IT SCHEDULE PROG",
+            "fullParentPathCode": "047.4732.47QTCA",
+            "postedDate": "2026-10-01",
+            "type": "Solicitation",
+            "baseType": "Solicitation",
+            "archiveType": "autocustom",
+            "archiveDate": "2026-12-31",
+            "typeOfSetAsideDescription": "Total Small Business Set-Aside (FAR 19.5)",
+            "typeOfSetAside": "SBA",
+            "responseDeadLine": "2026-11-02T14:00:00-05:00",
+            "naicsCode": "541512",
+            "classificationCode": "D302",
+            "active": "Yes",
+            "award": null,
+            "pointOfContact": [
+                {
+                    "fax": null,
+                    "type": "primary",
+                    "email": "co@example.invalid",
+                    "phone": "5555550100",
+                    "title": "Contracting Officer",
+                    "fullName": "Pat Example"
+                }
+            ],
+            "description": "https://api.sam.gov/prod/opportunities/v1/noticedesc?noticeid=synthetic0000000000000000amend001",
+            "organizationType": "OFFICE",
+            "officeAddress": {
+                "zipcode": "20405",
+                "city": "WASHINGTON",
+                "countryCode": "USA",
+                "state": "DC"
+            },
+            "placeOfPerformance": {
+                "city": {
+                    "code": "00000",
+                    "name": "Arlington"
+                },
+                "state": {
+                    "code": "VA"
+                },
+                "zip": "22201",
+                "country": {
+                    "code": "USA"
+                }
+            },
+            "additionalInfoLink": null,
+            "uiLink": "null",
+            "links": [
+                {
+                    "rel": "self",
+                    "href": "null"
+                }
+            ],
+            "resourceLinks": [
+                "https://example.invalid/attachments/statement-of-work.pdf"
+            ]
+        }
+    ]
+}

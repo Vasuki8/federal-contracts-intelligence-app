@@ -17,8 +17,8 @@ def sqlalchemy_url(database_url: str) -> str:
     raise ValueError("Database URL must start with postgresql:// or postgres://")
 
 
-def connect(database_url: str) -> psycopg.Connection[TupleRow]:
-    return psycopg.connect(database_url, connect_timeout=5)
+def connect(database_url: str, *, autocommit: bool = False) -> psycopg.Connection[TupleRow]:
+    return psycopg.connect(database_url, connect_timeout=5, autocommit=autocommit)
 
 
 def server_version(database_url: str) -> str:

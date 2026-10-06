@@ -62,3 +62,45 @@ The build container's network policy blocks `open.gsa.gov`, `api.sam.gov`, `sam.
 
 ### 2026-10-06 · Git default branch
 The GitHub repository was empty, so the first push (branch `claude/peaceful-wright-3fjv0e`) becomes its default branch. Rename or add `main` in GitHub settings if preferred.
+
+---
+
+## M1 — Data ingestion
+
+### 2026-10-06 · Official docs read from their GitHub source repos
+open.gsa.gov and the USAspending docs are blocked from the build container. Both are published from public repos, read at `GSA/open-gsa-redesign@cc568a8` and `fedspendingtransparency/usaspending-api@03b9e25`. Anything unclear is marked "⚠ verify live" in `data-sources.md`. The first live run (`app ingest sample-fixtures`) saves real fixtures.
+
+### 2026-10-06 · Docs vs plan: notice versions come from our own snapshots
+**Docs:** the Opportunities API "only provides the latest active version of the opportunity". `notice_versions` therefore gets a row whenever a fetched notice's content hash differs from what we stored, with a `{field: [old, new]}` diff and a full snapshot. Amendments published between two fetches collapse into one version. Full history would need SAM.gov Data Services extracts (not used).
+
+### 2026-10-06 · Docs contradict themselves on SAM field names: accept both
+The field table says `reponseDeadLine`, `setAsideCode`/`setAside`, `pointofContact`, `officeAddress.zip`; the example response says `responseDeadLine`, `typeOfSetAside`/`typeOfSetAsideDescription`, `pointOfContact`, `officeAddress.zipcode`. The parser accepts either and logs any key the docs don't mention. `offset` is documented as a page index; we follow that, warn when fewer distinct notices arrive than `totalRecords`, and `sample-fixtures` tests it directly.
+
+### 2026-10-06 · SAM request budget: 10/day by default, delta first
+The Opportunities docs give no numbers; other SAM APIs document 10/day (no role) and 1,000/day (with a role). `SAM_DAILY_REQUEST_LIMIT` (default 10) is checked before every request against `raw_files` rows since 00:00 UTC. Failed requests are archived too, so they count. Out of budget, or a 429 from SAM, ends the run as `partial` (exit 0), and the next run resumes. The daily delta queries all NAICS in one search (about 2–3 pages) and filters to the vertical locally; 11 per-code queries would exceed 10/day. The backfill uses one chunk per (NAICS code, ≤1-year window), resuming page by page. Schedule the delta before the backfill each day.
+
+### 2026-10-06 · Notice descriptions are not fetched in M1
+Each description is a separate API request. With a 10/day budget it can't be fetched for every notice. Decide in M2/M3 (PIID search, briefs): fetch only for matched or saved notices.
+
+### 2026-10-06 · Docs vs plan: awards come from USAspending only (backfill and delta)
+`/api/v2/download/awards/` filters by NAICS and accepts `time_period.date_type` = `action_date` or `last_modified_date`, so one key-free source covers the 5-year backfill and the daily delta. The SAM Contract Awards API (10/day without a role) isn't needed in M1. Its `lastModifiedDate` filter and async extract (up to 1M records) remain a fallback if USAspending lags too much.
+
+### 2026-10-06 · Awards: award-level rows, no `mod_number`
+USAspending's award-level ("prime award summary") file already collapses modifications to one row per award, keyed by `contract_award_unique_key`. It has no single modification number, so BUILD_PLAN's `awards.mod_number` is dropped. Transaction history isn't loaded in M1 (add the transaction download if M2 needs it). Rows are upserted only when `last_modified_date` is the same or newer, so overlapping chunks and re-runs are safe.
+
+### 2026-10-06 · Awards chunking: fiscal year, split on the 500,000-row cap
+Backfill: one download per federal fiscal year (all vertical NAICS together). A file that reports ≥ 500,000 rows is truncated, so that chunk is split by NAICS code, then by quarter. The requested `file_name` is checkpointed, so a crashed run polls the existing download instead of requesting a new one. Delta: `last_modified_date` from the last success minus 3 days, no checkpoints (cheap to repeat).
+
+### 2026-10-06 · Text in, typed in SQL
+Award CSVs are read as text (polars) and COPYed into a temp table. Casts use PostgreSQL 16's `pg_input_is_valid`, so one malformed number or date becomes NULL instead of failing a whole file. Requires PostgreSQL ≥ 16 (also true for Neon and Supabase).
+
+### 2026-10-06 · Agencies, offices and entities come from our own data
+The Federal Hierarchy and Entity APIs allow 10 requests/day. Agencies and offices are taken from notices (`fullParentPathCode`/`Name`) and awards (`awarding_*_code`/`_name`); entities from award recipients, with business-type flags in `entities.business_types`. Office names are split from the path only when the name pieces match the code pieces, because names can contain dots ("U.S. …"). ⚠ M2 depends on SAM's department/sub-tier/office codes matching USAspending's `awarding_agency_code`/`awarding_sub_agency_code`/`awarding_office_code`; verify on live data.
+
+### 2026-10-06 · Raw archive layout
+`RAW_ARCHIVE_DIR/<source>/<YYYY>/<MM>/<DD>/<HHMMSSffffff>_<sha12>.<ext>`. SAM JSON pages are gzipped (`.json.gz`, deterministic); USAspending zips are kept as downloaded. `sha256` is of the bytes as received. API keys are stripped from `raw_files.request_params` and from anything logged or raised. Download-status polls aren't archived; the final status is.
+
+### 2026-10-06 · Jobs: locks, connections, run statuses
+- Each job takes a Postgres advisory lock, so overlapping cron runs exit with a message instead of colliding.
+- Bookkeeping (`ingest_runs`, `raw_files`) uses an autocommit connection; data and its chunk checkpoint commit together on a second connection.
+- Runs end `succeeded`, `partial` (budget) or `failed` (with the error).
