@@ -146,9 +146,7 @@ def test_admin_confirmations_count_as_labels(db_url: str, world: Conn, tmp_path:
 
 def test_unreadable_answers_are_reported(tmp_path: Path) -> None:
     sheet = tmp_path / "bad.csv"
-    sheet.write_text(
-        "notice_id,c1_id,answer\nN1,,1\nN2,A,maybe\nN3,A,1\n", encoding="utf-8-sig"
-    )
+    sheet.write_text("notice_id,c1_id,answer\nN1,,1\nN2,A,maybe\nN3,A,1\n", encoding="utf-8-sig")
     with pytest.raises(LabelError) as error:
         read_answers(sheet, "spreadsheet", TODAY)
     assert "line 2: answer 1 but candidate 1 is empty" in str(error.value)
