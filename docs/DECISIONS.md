@@ -249,3 +249,25 @@ The first `app match notices` on Neon failed with "project size limit (1024 MB) 
 - A notice that still links to more than 50 awards is skipped.
 - `app match reset` (Ingest job `match-reset`) frees a bloated matches table. With no human decisions recorded it truncates the table, which works even on a database over its limit; otherwise it deletes the automatic rows and runs VACUUM FULL.
 - `app status` shows the database's share of `DATABASE_SIZE_LIMIT_MB` (the Ingest workflow sets 1024) and warns at 80%.
+
+**After the fix** (`match-reset`, then FY2026–FY2027 archived notices, then `match`): the database was 431 MB after the reset and is 520 MB (51%) with 20,450 notices and every match stored. `notice_award_matches` takes 29 MB.
+
+### 2026-10-06 · First hosted matcher results (before labels)
+| What | Result |
+|---|---|
+| Notices the matcher works on | 2,290 |
+| Incumbent shown | 184 (8%) |
+| Possible incumbents only | 1,989 (87%) |
+| No candidates | 115 |
+| Cite a contract number | 54 |
+| Notices linked to the award made from them | 4,734 (10,818 links) |
+| Recompetes | 30,899, rebuilt in 3.2 s |
+| Matcher run time | 4 minutes |
+
+**Inputs:**
+- Sub-tier codes match between notices and awards for 94% of notices, office codes for 88%, so office evidence is usable.
+- Only 48% of active notices have description text, because SAM's daily CSV leaves the description empty for the rest. The title then carries the text evidence alone, which is a main reason most notices show possible incumbents rather than one.
+
+`app match diagnose` now counts exactly the notices the matcher works on (active, of a type that can have an incumbent, not past their archive date) through the same SQL condition as the matcher. Before, it counted every active notice (2,969), which understated the share shown.
+
+The threshold (0.8) and margin (0.15) are unchanged until the labels show where precision stays at 90% or more.

@@ -7,19 +7,18 @@
 - Results: what the matcher currently shows."""
 
 from collections.abc import Iterable
+from datetime import date
 
-from pipeline.match.candidates import Conn
+from pipeline.match.candidates import IN_SCOPE_SQL, VERTICAL_SQL, Conn
 from pipeline.match.config import MatchingConfig
-
-VERTICAL_SQL = "(n.naics = ANY(%(vertical)s) OR n.naics_codes && %(vertical)s)"
 
 
 def _pct(part: int, whole: int) -> str:
     return f"{part:,} of {whole:,} ({100 * part / whole:.0f}%)" if whole else "0 of 0"
 
 
-def diagnose(conn: Conn, vertical: Iterable[str], cfg: MatchingConfig) -> list[str]:
-    params = {"vertical": sorted(vertical), "types": list(cfg.notice_types)}
+def diagnose(conn: Conn, vertical: Iterable[str], cfg: MatchingConfig, today: date) -> list[str]:
+    params = {"vertical": sorted(vertical), "types": list(cfg.notice_types), "today": today}
     lines = ["Notices in the vertical"]
     rows = conn.execute(
         f"""
@@ -38,7 +37,13 @@ def diagnose(conn: Conn, vertical: Iterable[str], cfg: MatchingConfig) -> list[s
     if span and span[0]:
         lines.append(f"  posted between {span[0]} and {span[1]}")
 
-    lines.append("Office codes (active notices that can have an incumbent)")
+    scope = conn.execute(f"SELECT count(*) FROM notices n WHERE {IN_SCOPE_SQL}", params)
+    in_scope = scope.fetchone()
+    lines.append(
+        f"Notices the matcher works on (active, can have an incumbent, not past their "
+        f"archive date): {in_scope[0] if in_scope else 0:,}"
+    )
+    lines.append("Office codes (notices the matcher works on)")
     office = conn.execute(
         f"""
         SELECT count(*),
@@ -47,8 +52,7 @@ def diagnose(conn: Conn, vertical: Iterable[str], cfg: MatchingConfig) -> list[s
                count(*) FILTER (WHERE EXISTS (
                    SELECT 1 FROM awards a WHERE a.awarding_sub_agency_code = n.subtier_code
                      AND a.awarding_office_code = n.office_code))
-        FROM notices n
-        WHERE n.active AND n.type = ANY(%(types)s) AND {VERTICAL_SQL}
+        FROM notices n WHERE {IN_SCOPE_SQL}
         """,
         params,
     ).fetchone()
@@ -74,13 +78,13 @@ def diagnose(conn: Conn, vertical: Iterable[str], cfg: MatchingConfig) -> list[s
         SELECT count(*), count(*) FILTER (WHERE EXISTS (
             SELECT 1 FROM notice_descriptions d WHERE d.notice_id = n.notice_id
               AND coalesce(d.text, '') <> ''))
-        FROM notices n WHERE n.active AND {VERTICAL_SQL}
+        FROM notices n WHERE {IN_SCOPE_SQL}
         """,
         params,
     ).fetchone()
-    lines.append(f"  active notices with a description  {_pct(text[1], text[0]) if text else '-'}")
+    lines.append(f"  notices with a description    {_pct(text[1], text[0]) if text else '-'}")
 
-    lines.append("Matcher results (active notices)")
+    lines.append("Matcher results (notices the matcher works on)")
     shown = conn.execute(
         f"""
         SELECT count(*),
@@ -92,8 +96,7 @@ def diagnose(conn: Conn, vertical: Iterable[str], cfg: MatchingConfig) -> list[s
                      AND m.shown = 'possible')),
                count(*) FILTER (WHERE EXISTS (SELECT 1 FROM notice_award_matches m
                    WHERE m.notice_id = n.notice_id AND m.method = 'explicit_reference'))
-        FROM notices n
-        WHERE n.active AND n.type = ANY(%(types)s) AND {VERTICAL_SQL}
+        FROM notices n WHERE {IN_SCOPE_SQL}
         """,
         params,
     ).fetchone()

@@ -17,6 +17,14 @@ Conn = psycopg.Connection[TupleRow]
 NORM_SQL = "nullif(upper(regexp_replace(coalesce({col}, ''), '[[:space:]-]+', '', 'g')), '')"
 END_SQL = "coalesce(a.ultimate_end, a.ordering_period_end)"
 VALUE_SQL = "coalesce(a.total_value, a.current_total_value, a.obligated_total)"
+VERTICAL_SQL = "(n.naics = ANY(%(vertical)s) OR n.naics_codes && %(vertical)s)"
+# Notices the matcher works on: active, of a type that can have an incumbent, in the
+# vertical and not yet past their archive date. Parameters: types, vertical, today.
+IN_SCOPE_SQL = f"""
+    n.active AND n.type = ANY(%(types)s)
+    AND (n.archive_date IS NULL OR n.archive_date >= %(today)s)
+    AND {VERTICAL_SQL}
+"""
 
 _AWARD_COLUMNS = f"""
     a.award_key, a.piid, a.piid_norm, a.award_type_code, a.awarding_sub_agency_code,
@@ -46,7 +54,7 @@ def load_notices(
     """Active vertical notices of a type that can have an incumbent and not yet past their
     archive date, with the latest description text when one has been loaded."""
     rows = conn.execute(
-        """
+        f"""
         SELECT n.notice_id, n.title, d.text, n.solicitation_number, n.subtier_code,
                n.office_code, n.naics, n.naics_codes, n.psc, n.set_aside_code,
                n.response_deadline, n.posted_at
@@ -55,9 +63,7 @@ def load_notices(
             SELECT text FROM notice_descriptions nd
             WHERE nd.notice_id = n.notice_id ORDER BY nd.version DESC LIMIT 1
         ) d ON true
-        WHERE n.active AND n.type = ANY(%(types)s)
-          AND (n.archive_date IS NULL OR n.archive_date >= %(today)s)
-          AND (n.naics = ANY(%(vertical)s) OR n.naics_codes && %(vertical)s)
+        WHERE {IN_SCOPE_SQL}
         ORDER BY n.notice_id
         """,
         {"types": list(cfg.notice_types), "vertical": sorted(vertical), "today": today},

@@ -66,7 +66,7 @@ def diagnose_command() -> None:
     """Check the matcher's inputs: office-code overlap, notice coverage, text, results."""
     _, database_url = _settings_or_exit()
     with connect(database_url) as conn:
-        for line in diagnose(conn, vertical_naics(), load_matching_config()):
+        for line in diagnose(conn, vertical_naics(), load_matching_config(), utc_today()):
             typer.echo(line)
 
 

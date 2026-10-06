@@ -144,10 +144,13 @@ def test_recompetes_window_types_and_links(conn: Conn, db_url: str, tmp_path: Pa
 
 def test_diagnose_reports_inputs_and_results(db_url: str, world: Conn, tmp_path: Path) -> None:
     run_matcher(db_url, tmp_path)
-    text = "\n".join(diagnose(world, VERTICAL, CFG))
+    # Active but past its archive date: counted with the notices, not in the matcher's scope.
+    add_notice(world, "STALE", archive_date=date(2026, 10, 1))
+    text = "\n".join(diagnose(world, VERTICAL, CFG, TODAY))
     assert "Solicitation" in text and "archived" in text
+    assert "not past their archive date): 2" in text
     assert "office found in awards        2 of 2 (100%)" in text
-    assert "active notices with a description  2 of 2 (100%)" in text
+    assert "notices with a description    2 of 2 (100%)" in text
     assert "incumbent shown               2 of 2 (100%)" in text
     assert "cites a contract number       1 of 2 (50%)" in text
     assert "notices linked to the award made from them  2" in text
