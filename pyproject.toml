@@ -1,0 +1,55 @@
+[project]
+name = "fci-pipeline"
+version = "0.1.0"
+description = "Data pipeline for the federal contracts intelligence app: ingest, match, recompetes, briefs."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "alembic>=1.20.0",
+    "psycopg[binary]>=3.3.6",
+    "pydantic>=2.13.5",
+    "pydantic-settings>=2.15.0",
+    "sqlalchemy>=2.1.3",
+    "typer>=0.27.2",
+]
+
+[project.scripts]
+app = "pipeline.cli:app"
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "pipeline"
+module-root = ""
+
+[dependency-groups]
+dev = [
+    "mypy>=2.4.0",
+    "pytest>=9.1.1",
+    "ruff>=0.16.10",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+files = ["pipeline", "migrations"]
+plugins = ["pydantic.mypy"]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[tool.pytest.ini_options]
+testpaths = ["pipeline/tests"]
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+markers = ["db: needs the test Postgres database (TEST_DATABASE_URL)"]

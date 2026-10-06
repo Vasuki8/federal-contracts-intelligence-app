@@ -1,0 +1,129 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pipeline:
+    name: Pipeline (lint, types, migrations, tests)
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://fci:fci@localhost:5432/fci
+      TEST_DATABASE_URL: postgresql://fci:fci@localhost:5432/fci_test
+    services:
+      db:
+        image: postgres:16
+        env:
+          POSTGRES_USER: fci
+          POSTGRES_PASSWORD: fci
+          POSTGRES_DB: fci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fci -d fci"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: "0.12.23"
+          python-version: "3.12"
+      - name: Create test database (same script as docker compose)
+        run: docker exec -i ${{ job.services.db.id }} psql -U fci -d fci < docker/postgres/init/01-test-db.sql
+      - run: uv sync --locked
+      - name: Lint
+        run: uv run ruff check
+      - name: Format
+        run: uv run ruff format --check
+      - name: Type-check
+        run: uv run mypy
+      - name: Migrate
+        run: uv run alembic upgrade head
+      - name: CLI smoke test
+        run: uv run app doctor
+      - name: Tests
+        run: uv run pytest
+
+  web:
+    name: Web (lint, types, tests, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm lint
+      - name: Type-check
+        run: pnpm typecheck
+      - name: Tests
+        run: pnpm test
+      - name: Build
+        run: pnpm build
+
+  db-types:
+    name: DB types match migrations
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://fci:fci@localhost:5432/fci
+    services:
+      db:
+        image: postgres:16
+        env:
+          POSTGRES_USER: fci
+          POSTGRES_PASSWORD: fci
+          POSTGRES_DB: fci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fci -d fci"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: "0.12.23"
+          python-version: "3.12"
+      - run: uv sync --locked
+      - name: Migrate
+        run: uv run alembic upgrade head
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: web
+      - name: Check web/src/db/types.ts is up to date (fix with `pnpm db:codegen`)
+        run: pnpm db:verify
+        working-directory: web
