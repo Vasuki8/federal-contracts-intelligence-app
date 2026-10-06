@@ -4,7 +4,13 @@ A notice's solicitation number matching an award's solicitation id within the sa
 sub-tier agency (solicitation numbers repeat across agencies), or an award notice whose
 `award.number` (or, for orders, its solicitation number) is the award's PIID. These
 label past notices with their winner, feed the evaluation, and mark incumbents that
-have already been replaced."""
+have already been replaced.
+
+Only numbers shaped like real contract numbers are matched (8-20 letters and digits,
+with a letter and at least 4 digits). Placeholders such as "N/A" or "TBD" are shared by
+thousands of awards in an agency, and the first hosted run filled the database with
+such links. A notice that still links to more than MAX_LINKS_PER_NOTICE awards is
+skipped: that many is not "the award made from it"."""
 
 from collections.abc import Iterable
 
@@ -17,6 +23,11 @@ REASONS = {
     "award_notice_number": "The award notice names this contract number",
 }
 TMP = "tmp_history_links"
+MAX_LINKS_PER_NOTICE = 50
+# Same rule as piids.looks_like_contract_number, on an already normalized value.
+LOOKS_LIKE_ID = (
+    "({col} ~ '^[A-Z0-9]{{8,20}}$' AND {col} ~ '[A-Z]' AND {col} ~ '([0-9][^0-9]*){{4}}')"
+)
 
 
 def link_history(conn: Conn, vertical: Iterable[str], matcher_version: str) -> tuple[int, int]:
@@ -24,37 +35,44 @@ def link_history(conn: Conn, vertical: Iterable[str], matcher_version: str) -> t
     no longer hold. Returns (written, deleted)."""
     codes = sorted(vertical)
     award_number = NORM_SQL.format(col="n.award ->> 'number'")
+    solicitation_ok = LOOKS_LIKE_ID.format(col="n.solicitation_number_norm")
+    award_number_ok = LOOKS_LIKE_ID.format(col=award_number)
     conn.execute(f"DROP TABLE IF EXISTS {TMP}")
     conn.execute(
         f"""
         CREATE TEMP TABLE {TMP} AS
-        SELECT DISTINCT ON (notice_id, award_key) notice_id, award_key, piid, method
-        FROM (
-            SELECT n.notice_id, a.award_key, a.piid, 'same_solicitation' AS method
-            FROM notices n
-            JOIN awards a ON a.solicitation_id_norm = n.solicitation_number_norm
-                         AND a.awarding_sub_agency_code = n.subtier_code
-            WHERE n.naics = ANY(%(codes)s) OR n.naics_codes && %(codes)s
-            UNION ALL
-            SELECT n.notice_id, a.award_key, a.piid, 'award_notice_number'
-            FROM notices n
-            JOIN awards a ON a.piid_norm = {award_number}
-                         AND a.awarding_sub_agency_code = n.subtier_code
-            WHERE n.award ? 'number'
-              AND (n.naics = ANY(%(codes)s) OR n.naics_codes && %(codes)s)
-            UNION ALL
-            -- Award notices for orders often carry the order number as the solicitation
-            -- number and the contract vehicle as the award number.
-            SELECT n.notice_id, a.award_key, a.piid, 'award_notice_number'
-            FROM notices n
-            JOIN awards a ON a.piid_norm = n.solicitation_number_norm
-                         AND a.awarding_sub_agency_code = n.subtier_code
-            WHERE n.type = 'Award Notice'
-              AND (n.naics = ANY(%(codes)s) OR n.naics_codes && %(codes)s)
+        SELECT notice_id, award_key, piid, method FROM (
+            SELECT DISTINCT ON (notice_id, award_key) notice_id, award_key, piid, method,
+                   count(*) OVER (PARTITION BY notice_id) AS links
+            FROM (
+                SELECT n.notice_id, a.award_key, a.piid, 'same_solicitation' AS method
+                FROM notices n
+                JOIN awards a ON a.solicitation_id_norm = n.solicitation_number_norm
+                             AND a.awarding_sub_agency_code = n.subtier_code
+                WHERE {solicitation_ok}
+                  AND (n.naics = ANY(%(codes)s) OR n.naics_codes && %(codes)s)
+                UNION ALL
+                SELECT n.notice_id, a.award_key, a.piid, 'award_notice_number'
+                FROM notices n
+                JOIN awards a ON a.piid_norm = {award_number}
+                             AND a.awarding_sub_agency_code = n.subtier_code
+                WHERE n.award ? 'number' AND {award_number_ok}
+                  AND (n.naics = ANY(%(codes)s) OR n.naics_codes && %(codes)s)
+                UNION ALL
+                -- Award notices for orders often carry the order number as the
+                -- solicitation number and the contract vehicle as the award number.
+                SELECT n.notice_id, a.award_key, a.piid, 'award_notice_number'
+                FROM notices n
+                JOIN awards a ON a.piid_norm = n.solicitation_number_norm
+                             AND a.awarding_sub_agency_code = n.subtier_code
+                WHERE n.type = 'Award Notice' AND {solicitation_ok}
+                  AND (n.naics = ANY(%(codes)s) OR n.naics_codes && %(codes)s)
+            ) found
+            ORDER BY notice_id, award_key, method
         ) links
-        ORDER BY notice_id, award_key, method
+        WHERE links <= %(max_links)s
         """,
-        {"codes": codes},
+        {"codes": codes, "max_links": MAX_LINKS_PER_NOTICE},
     )
     written = 0
     for method, reason in REASONS.items():

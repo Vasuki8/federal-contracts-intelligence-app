@@ -52,7 +52,12 @@ def status() -> None:
         raise typer.Exit(code=2) from exc
     try:
         with connect(database_url) as conn:
-            lines = build_report(conn, settings.sam_daily_request_limit, datetime.now(UTC))
+            lines = build_report(
+                conn,
+                settings.sam_daily_request_limit,
+                datetime.now(UTC),
+                settings.database_size_limit_mb,
+            )
     except psycopg.errors.UndefinedTable as exc:
         typer.echo("The ingest tables don't exist yet. Run: uv run alembic upgrade head", err=True)
         raise typer.Exit(code=1) from exc

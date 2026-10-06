@@ -49,6 +49,7 @@ def test_env_status_lists_every_setting(clean_env: pytest.MonkeyPatch) -> None:
         "ANTHROPIC_API_KEY",
         "ANTHROPIC_MODEL",
         "ADMIN_PASSWORD",
+        "DATABASE_SIZE_LIMIT_MB",
         "RESEND_API_KEY",
         "STRIPE_SECRET_KEY",
         "STRIPE_WEBHOOK_SECRET",

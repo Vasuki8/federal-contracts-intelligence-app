@@ -26,6 +26,7 @@ on:
           - match-diagnose
           - label-sheet
           - match-eval
+          - match-reset
         default: daily
       years:
         description: Years of award history (awards-backfill only)
@@ -61,6 +62,8 @@ jobs:
       YEARS: ${{ inputs.years || '5' }}
       FISCAL_YEAR: ${{ inputs.fiscal_year || '' }}
       LABEL_SIZE: ${{ inputs.label_size || '100' }}
+      # Neon's free plan allows 1 GB per project; `app status` warns at 80%.
+      DATABASE_SIZE_LIMIT_MB: ${{ vars.DATABASE_SIZE_LIMIT_MB || '1024' }}
     steps:
       - name: Check secrets
         id: ready
@@ -135,6 +138,10 @@ jobs:
           name: matching-eval-${{ github.run_id }}
           path: matching-eval.md
           retention-days: 90
+
+      - name: Reset matches
+        if: steps.migrate.outcome == 'success' && env.JOB == 'match-reset'
+        run: uv run app match reset
 
       # Daily: each step runs even if an earlier one failed
       - name: Notices from SAM.gov's daily CSV

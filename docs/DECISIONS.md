@@ -238,3 +238,14 @@ M1 versioned every changed field. Its amendment test now expects the posted date
 
 ### 2026-10-06 · SAM's own report of the daily limit
 api.sam.gov may send `X-RateLimit-*` headers. Any it sends are stored with each raw response, and `app status` shows the most recent, so the real limit of the key is visible: 10 a day without a role in an entity registration, 1,000 with one.
+
+### 2026-10-06 · First hosted matcher run hit Neon's 1 GB limit
+The first `app match notices` on Neon failed with "project size limit (1024 MB) has been exceeded". `notice_award_matches` had grown to 760 MB while saving history links, and since the step failed, every row was rolled back. Rolled-back rows still occupy their pages until the table is rewritten, so the database stayed at 1,175 MB and refused all writes.
+
+**Cause.** Placeholder solicitation numbers ("N/A", "TBD", short RFQ numbers) are shared by thousands of awards within an agency. Each notice carrying one linked to all of them.
+
+**Fixes:**
+- History links now use only numbers shaped like real contract numbers, the same rule as contract-number extraction: 8–20 letters and digits, with a letter and at least 4 digits.
+- A notice that still links to more than 50 awards is skipped.
+- `app match reset` (Ingest job `match-reset`) frees a bloated matches table. With no human decisions recorded it truncates the table, which works even on a database over its limit; otherwise it deletes the automatic rows and runs VACUUM FULL.
+- `app status` shows the database's share of `DATABASE_SIZE_LIMIT_MB` (the Ingest workflow sets 1024) and warns at 80%.

@@ -10,6 +10,7 @@ import pytest
 from psycopg.rows import TupleRow
 
 from pipeline.match.diagnose import diagnose
+from pipeline.match.reset import reset_automatic_matches
 from pipeline.recompetes import refresh_recompetes
 from pipeline.tests.match.conftest import CFG, TODAY, VERTICAL, run_matcher
 from pipeline.tests.match.factories import add_award, add_notice
@@ -150,3 +151,44 @@ def test_diagnose_reports_inputs_and_results(db_url: str, world: Conn, tmp_path:
     assert "incumbent shown               2 of 2 (100%)" in text
     assert "cites a contract number       1 of 2 (50%)" in text
     assert "notices linked to the award made from them  2" in text
+
+
+def test_placeholder_and_overly_shared_numbers_make_no_history_links(
+    db_url: str, conn: Conn, tmp_path: Path
+) -> None:
+    add_notice(conn, "PLACEHOLDER", active=False, solicitation_number="N/A")
+    add_notice(conn, "SHORT", active=False, solicitation_number="RFQ-0001")
+    for i in range(3):
+        add_award(conn, f"NA{i}", solicitation_id="N/A", ultimate_end=date(2031, 1, 1))
+        add_award(conn, f"RFQ{i}", solicitation_id="RFQ0001", ultimate_end=date(2031, 1, 1))
+    add_notice(conn, "IDIQ", active=False, solicitation_number="47QRAD-20-R-0001")
+    for i in range(51):  # more awards than one notice can plausibly have produced
+        add_award(conn, f"OASIS{i}", solicitation_id="47QRAD20R0001", ultimate_end=date(2031, 1, 1))
+    add_notice(conn, "REAL", active=False, solicitation_number="47QTCA-25-Q-0099")
+    add_award(conn, "WON", solicitation_id="47QTCA25Q0099", ultimate_end=date(2031, 1, 1))
+    run_matcher(db_url, tmp_path)
+    linked = conn.execute(
+        "SELECT DISTINCT notice_id FROM notice_award_matches WHERE kind = 'resulting_award'"
+    ).fetchall()
+    assert linked == [("REAL",)]
+
+
+def test_reset_frees_matches_but_keeps_human_decisions(
+    db_url: str, world: Conn, tmp_path: Path
+) -> None:
+    run_matcher(db_url, tmp_path)
+    with psycopg.connect(db_url, autocommit=True) as conn:
+        assert "no human decisions" in reset_automatic_matches(conn)
+    assert world.execute("SELECT count(*) FROM notice_award_matches").fetchone() == (0,)
+
+    run_matcher(db_url, tmp_path)
+    world.execute("UPDATE notice_award_matches SET status = 'confirmed' WHERE award_key = 'A1'")
+    world.execute(
+        "INSERT INTO match_reviews (notice_id, award_key, decision) "
+        "VALUES ('N1', 'A1', 'confirmed')"
+    )
+    with psycopg.connect(db_url, autocommit=True) as conn:
+        message = reset_automatic_matches(conn)
+    assert "kept 1 human decisions and 1 reviews" in message
+    rows = world.execute("SELECT award_key, status FROM notice_award_matches").fetchall()
+    assert rows == [("A1", "confirmed")]

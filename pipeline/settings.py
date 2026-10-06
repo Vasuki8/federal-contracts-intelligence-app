@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     raw_archive_dir: Path = Path("data/raw")
     # SAM.gov daily request limit for this account's API key (10 without a role).
     sam_daily_request_limit: int = 10
+    # Hosted database size limit (Neon's free plan: 1024 MB per project), for warnings.
+    database_size_limit_mb: int | None = None
 
     def require_database_url(self) -> str:
         if self.database_url is None:

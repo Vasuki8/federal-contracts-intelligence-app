@@ -55,8 +55,14 @@ def _megabytes(label: str, size: int) -> str:
     return f"  {label:<22}{size / 1_000_000:>12,.1f}"
 
 
+SIZE_WARNING_SHARE = 0.8
+
+
 def build_report(
-    conn: psycopg.Connection[TupleRow], sam_daily_limit: int, now: datetime
+    conn: psycopg.Connection[TupleRow],
+    sam_daily_limit: int,
+    now: datetime,
+    size_limit_mb: int | None = None,
 ) -> list[str]:
     lines: list[str] = []
     runs = conn.execute(
@@ -124,8 +130,14 @@ def build_report(
         lines.append(f"  {label:<22}{row[0] if row else 0:>12,}")
 
     lines.append("Storage (MB)")
-    lines.append(_megabytes("database", _scalar(conn, DATABASE_SIZE)))
+    database_size = _scalar(conn, DATABASE_SIZE)
+    lines.append(_megabytes("database", database_size))
     for name, size in conn.execute(LARGEST_TABLES).fetchall():
         lines.append(_megabytes(f"  {name}", size))
     lines.append(_megabytes("raw archive", _scalar(conn, "SELECT sum(bytes) FROM raw_files")))
+    if size_limit_mb:
+        share = database_size / (size_limit_mb * 1_000_000)
+        lines.append(f"  database is at {share:.0%} of its {size_limit_mb:,} MB limit")
+        if share >= SIZE_WARNING_SHARE:
+            lines.append("  WARNING: the database is close to its size limit; writes fail past it.")
     return lines

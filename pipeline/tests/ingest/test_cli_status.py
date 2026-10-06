@@ -84,6 +84,8 @@ def test_status_report_sections(
     assert storage[0].split()[0] == "database"
     assert storage[-1].split()[:2] == ["raw", "archive"]
     assert len(storage) == 7  # database, the 5 largest tables, raw archive
+    limited = "\n".join(build_report(conn, 10, datetime.now(UTC), size_limit_mb=1))
+    assert "database is at" in limited and "WARNING: the database is close" in limited
 
 
 def test_offset_semantics_detection() -> None:

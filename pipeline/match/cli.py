@@ -24,6 +24,7 @@ from pipeline.match.labels import (
     save_labels,
     write_sheet,
 )
+from pipeline.match.reset import reset_automatic_matches
 from pipeline.recompetes import SOURCE as RECOMPETES
 from pipeline.recompetes import refresh_recompetes
 from pipeline.runner import run_job
@@ -146,3 +147,11 @@ def eval_command(
     typer.echo(text)
     if report is not None:
         report.write_text(text, encoding="utf-8")
+
+
+@match_app.command("reset")
+def reset_command() -> None:
+    """Remove all automatic matches and free their space (human decisions are kept)."""
+    _, database_url = _settings_or_exit()
+    with connect(database_url, autocommit=True) as conn:
+        typer.echo(reset_automatic_matches(conn))
