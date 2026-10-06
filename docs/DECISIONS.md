@@ -135,7 +135,17 @@ The pending download had already been checkpointed, so the re-run collects the f
 ### 2026-10-06 · 3 years of award history on Neon's free plan (BUILD_PLAN says 5)
 One year of vertical awards takes about 200 MB on Neon. Neon's Free plan allows 1 GB per project (raised from 0.5 GB on 2026-10-02). Five years could approach that limit before notices and M2's tables are added, so the user chose **3 years** for now (`awards-backfill --years 3`; the Ingest workflow's default is now 3). Extend to 5 once `app status` shows enough room, or after moving to a paid plan.
 
-Less history is lost than it looks. The `action_date` filter matches any award with a transaction in the window, not only awards signed in it: the live 30-day sample contained contracts first signed in 2017, 2020–2024 and 2025. So any window already includes every contract still being modified, which is where current incumbents come from. Earlier years mostly add contracts that have ended, which give history (past winners, bid counts) but are not today's incumbents. An award with transactions in several years is stored once, so each extra year adds fewer rows than the first.
+Less history is lost than it looks. For award-level files, the `action_date` filter matches an award by its **latest** action date: each award appears in exactly one window, the one holding its most recent transaction. (The first version of this entry said "any transaction in the window". The 3-year run disproved that, see below.) So the latest year already includes every contract modified in that year, however old: the live 30-day sample had contracts first signed in 2017 and 2020–2025. That is where current incumbents come from. Earlier windows add awards whose last activity was in that window: mostly contracts that have ended, which give history (past winners, bid counts) but are not today's incumbents.
+
+Result of the 3-year run (2026-10-06, 76 min, 6 USAspending requests):
+
+| Window (action date) | Rows | Written |
+|---|---|---|
+| 2023-10-06 – 2024-09-30 | 85,528 | 85,528 |
+| FY2025 | 96,220 | 96,220 |
+| FY2026 (re-download, now from 1 Oct) | 124,379 | 589 |
+
+The award count grew by exactly the rows written (124,568 → 306,905), so every written row was new and no award appeared in two windows. Re-downloading FY2026 wrote only the 589 awards from the 5 added days; the other 123,790 rows were unchanged and not rewritten. `pg_database_size` is 263 MB (awards 233 MB with indexes, about 760 bytes per award; entities 21 MB). By that rate, years 4–5 would add roughly 140 MB.
 
 Two changes support this:
 - **Reloads cost no storage.** Award and entity upserts now rewrite a row only if its content changed (`ROW(...) IS DISTINCT FROM ROW(...)`), still with the newer-`last_modified` rule. Before, every reload rewrote every row. That created dead row versions, and Neon counts their space until vacuum reuses it. The 3-year run re-downloads FY2026, because its window now starts 1 October instead of 6 October, but writes only the rows that changed. `updated_at` now means "last changed". `raw_file_id` keeps pointing at the first file that had the current content.

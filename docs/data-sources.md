@@ -131,12 +131,17 @@ Business-type flags: `c8a_program_participant`, `sba_certified_8a_joint_venture`
 - `awarding_agency_code` can be 3 or 4 characters (`005`, `1100`).
 - `solicitation_identifier` is often empty on task orders. This matters for M2's
   same-solicitation link.
-- `date_type: action_date` matches awards with **any** transaction in the window. A 30-day
-  window returned contracts with `award_base_action_date` from 2017 to 2025 and
-  `award_latest_action_date` inside the window. Award-level rows are one per award, so an
-  award active in several windows is stored once (newest `last_modified_date` wins).
-- Size (Neon, 2026-10-06): one year of the 11 vertical codes is about 124,600 awards and
-  19,000 entities, and the database is about 200 MB.
+- For award-level files, `date_type: action_date` matches an award by its **latest** action
+  date, so each award appears in exactly one window. Evidence: a 30-day window returned
+  contracts with `award_base_action_date` from 2017 to 2025, all with
+  `award_latest_action_date` inside the window. In the 3-year backfill, the FY2024 and
+  FY2025 files shared no award with each other or with FY2026: the award count grew by
+  exactly the rows written. An award modified later moves to a newer window; the daily
+  `last_modified_date` delta picks that change up.
+- Size (Neon, 2026-10-06), 11 vertical codes. Awards per window: about 124,400 (FY2026),
+  96,200 (FY2025) and 85,500 (2023-10-06 to 2024-09-30). With 306,905 awards and 27,689
+  entities, `pg_database_size` is 263 MB, about 760 bytes per award with indexes. Neon's
+  dashboard showed about 200 MB when the database held the first 124,568 awards.
 
 ⚠ still to verify: whether IDVs come in the same file (the sample had only `A`, `C`, `D`).
 
