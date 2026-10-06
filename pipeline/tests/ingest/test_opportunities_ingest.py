@@ -215,3 +215,32 @@ def test_windows_never_exceed_one_year() -> None:
     assert parts[-1].end == date(2026, 6, 30)
     assert all((w.end - w.start).days < 365 for w in parts)
     assert all(b.start > a.end for a, b in itertools.pairwise(parts))
+
+
+def test_backfill_resumes_across_days_with_the_original_dates(
+    db_url: str, conn: Conn, tmp_path: Path
+) -> None:
+    pages: dict[tuple[str | None, int], dict[str, Any]] = {
+        ("541511", 0): {"totalRecords": 1, "opportunitiesData": records(1, "541511", "a")},
+        ("541512", 0): {"totalRecords": 1, "opportunitiesData": records(1, "541512", "b")},
+    }
+    fake = FakeSam(pages)
+    day1, day2, day3 = date(2026, 10, 6), date(2026, 10, 7), date(2026, 10, 8)
+
+    # Day 1: a new 12-month plan (one 365-day window, so one query per code); the
+    # budget (1 request) covers only the first code.
+    logs = run_job(db_url, tmp_path, fake, lambda job: job.continue_backfill(day1), limit=1)
+    assert any("Starting backfill 2025-10-07..2026-10-06" in line for line in logs)
+    assert run_statuses(conn) == ["partial"]
+
+    # Day 2: resumes the same plan; the dates do not move with the calendar.
+    logs = run_job(db_url, tmp_path, fake, lambda job: job.continue_backfill(day2), limit=10)
+    assert any("Resuming backfill 2025-10-07..2026-10-06: 1 of 2" in line for line in logs)
+    second = fake.requests[1].url.params
+    assert (second["ncode"], second["postedTo"]) == ("541512", "10/06/2026")
+    assert count(conn, "notices") == 2
+
+    # Day 3: the plan is complete, so nothing is fetched.
+    logs = run_job(db_url, tmp_path, fake, lambda job: job.continue_backfill(day3), limit=10)
+    assert len(fake.requests) == 2
+    assert any("is complete" in line for line in logs)

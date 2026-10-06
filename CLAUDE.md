@@ -88,7 +88,8 @@ uv run app ingest sample-fixtures    # first live run: save real fixtures, compa
 uv run app ingest awards-backfill --years 5          # USAspending, resumable
 uv run app ingest awards-delta                       # daily
 uv run app ingest opportunities                      # daily SAM delta (run before backfill)
-uv run app ingest opportunities --backfill           # 12 months (or --since 2025-10-01), resumable
+uv run app ingest opportunities --backfill           # resume / start 12 months; no-op once complete
+# Hosted: GitHub → Actions → "Ingest" (daily schedule + manual awards-backfill); DB = Neon (README)
 
 # Planned (not built yet):
 uv run app match notices                             # M2

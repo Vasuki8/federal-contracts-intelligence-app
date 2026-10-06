@@ -13,7 +13,7 @@ from pipeline.ingest.awards.job import AwardsJob
 from pipeline.ingest.context import IngestContext, ingest_run
 from pipeline.ingest.opportunities import SOURCE as OPPORTUNITIES
 from pipeline.ingest.opportunities.client import build_client as build_sam_client
-from pipeline.ingest.opportunities.job import OpportunitiesJob
+from pipeline.ingest.opportunities.job import DEFAULT_BACKFILL_DAYS, OpportunitiesJob
 from pipeline.ingest.runs import JobAlreadyRunning
 from pipeline.ingest.samples import sam_sample, usaspending_sample
 from pipeline.settings import MissingSettingError, Settings, get_settings
@@ -101,19 +101,28 @@ def opportunities(
             formats=DATE_FORMATS, metavar="YYYY-MM-DD", help="Backfill end date (default: today)."
         ),
     ] = None,
-    backfill: Annotated[bool, typer.Option(help="Backfill the last 12 months.")] = False,
+    backfill: Annotated[
+        bool, typer.Option(help="Resume the unfinished backfill, or start the last 12 months.")
+    ] = False,
 ) -> None:
-    """Notices from SAM.gov. With --since/--backfill: resumable backfill. Without: daily delta."""
+    """Notices from SAM.gov. Without options: daily delta.
+
+    --backfill resumes the unfinished backfill (or starts 12 months; does nothing once
+    complete). --since starts or resumes one from that date. --until fixes the end date."""
     settings, database_url, api_key = _settings_or_exit(sam=True)
     today = _today()
     vertical = vertical_naics()
-    if since is not None or backfill:
-        start = since.date() if since else today - timedelta(days=365)
-        end = until.date() if until else today
+    if since is not None or until is not None or backfill:
+        start = since.date() if since else None
+        end = until.date() if until else None
 
         def action(ctx: IngestContext) -> None:
             with build_sam_client(ctx, api_key, settings.sam_daily_request_limit) as client:
-                OpportunitiesJob(ctx, client, vertical).backfill(start, end)
+                job = OpportunitiesJob(ctx, client, vertical)
+                if end is not None:
+                    job.backfill(start or end - timedelta(days=DEFAULT_BACKFILL_DAYS), end)
+                else:
+                    job.continue_backfill(today, start)
 
         _run(settings, database_url, OPPORTUNITIES, "backfill", {}, action)
         return

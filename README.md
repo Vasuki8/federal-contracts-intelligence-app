@@ -36,3 +36,12 @@ cd web && pnpm install && pnpm dev   # http://localhost:3000, health at /api/hea
 Or individually: `uv run ruff check`, `uv run mypy`, `uv run pytest`, and in `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`.
 
 After adding a migration, regenerate the web's DB types with `cd web && pnpm db:codegen` and commit `web/src/db/types.ts`. CI fails if they drift.
+
+## Hosted database and scheduled ingest (Neon + GitHub Actions)
+
+1. In the [Neon console](https://console.neon.tech), create a project (Postgres **16 or newer**; a US East region is closest to the data sources and GitHub's runners).
+2. On the project dashboard, click **Connect**, turn **Connection pooling off**, and copy the connection string. The host must not contain `-pooler`: ingest needs session locks and temp tables.
+3. In GitHub: **Settings → Secrets and variables → Actions → New repository secret**, name `DATABASE_URL`, paste the string. `SAM_API_KEY` goes there too. Optionally add the *variable* `SAM_DAILY_REQUEST_LIMIT`.
+4. **Actions → Ingest → Run workflow**, choose `awards-backfill` (USAspending, a few hours, no key). The schedule then runs `daily` every morning: notices delta, notices backfill (resumes until complete), awards delta.
+
+Check progress in each run's **Status** step (`app status`). The repository is public, so run logs and the raw-archive artifacts are public too (public government data; secrets are masked).

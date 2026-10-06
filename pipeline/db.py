@@ -18,7 +18,8 @@ def sqlalchemy_url(database_url: str) -> str:
 
 
 def connect(database_url: str, *, autocommit: bool = False) -> psycopg.Connection[TupleRow]:
-    return psycopg.connect(database_url, connect_timeout=5, autocommit=autocommit)
+    # Generous timeout: a scaled-to-zero hosted database (Neon) can take seconds to wake.
+    return psycopg.connect(database_url, connect_timeout=20, autocommit=autocommit)
 
 
 def server_version(database_url: str) -> str:

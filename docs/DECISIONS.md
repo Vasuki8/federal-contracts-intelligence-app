@@ -113,3 +113,12 @@ The first live run settled the docs' open questions (details in `data-sources.md
 - **Office code = last piece of `fullParentPathCode`.** Real paths have 2–5 levels with named middle levels (`097.97AS.DLA LAND.DLA LAND COLUMBUS.SPE7L1`). Taking the third piece would have stored "DLA LAND" as the office and broken M2's office matching.
 - **`notices.naics_codes`** stores the undocumented `naicsCodes` list. A notice counts as in the vertical if any of its codes is.
 - **`notices.response_deadline_has_time`.** Deadlines can be plain dates. They're stored at 00:00 UTC with this flag set to false, so the app shows a date and never invents a time ("never show a guess as a fact").
+
+### 2026-10-06 · Hosted database on Neon, ingest on GitHub Actions
+At the user's request, data goes to a Neon Postgres (`DATABASE_URL` repository secret), loaded by `.github/workflows/ingest.yml`. Manual runs cover `awards-backfill`; a daily schedule runs the notices delta, the notices backfill and the awards delta. The **direct** (unpooled) connection string is required, because pooling breaks the session-level advisory locks and temp tables the jobs use. The workflow rejects a `-pooler` host, and the connect timeout is 20 s for Neon's scale-to-zero wake-up. ⚠ Five years of vertical awards may exceed a free-tier storage quota: check Neon's current limits, and start with `years: 1` if needed.
+
+### 2026-10-06 · Backfills resume with fixed dates
+Chunk keys contain dates, so a backfill must keep its dates across days or a resumed run starts over. `opportunities --backfill` resumes the latest unfinished plan with its original dates, starts a new 12-month plan only if none exists, and does nothing once complete. The default plan is 365 days inclusive (today − 364): one window, so one query per NAICS code. Going back exactly 365 days spans 366 and would need a second one-day window, costing 11 extra requests. The awards backfill isn't rate-limited: re-running it re-downloads only its first and last (date-dependent) chunks.
+
+### 2026-10-06 · Interim raw archive: run artifacts
+GitHub runners are ephemeral, so each Ingest run uploads its `data/raw/` as the artifact `raw-archive-<run_id>`, kept 90 days. `raw_files.path` stays relative to that run's archive. Permanent object storage (S3-compatible, e.g. Cloudflare R2) is the M7 item and should come before 90 days pass, or the earliest raw files will be lost. The repository is public, so these artifacts are public (public government data).

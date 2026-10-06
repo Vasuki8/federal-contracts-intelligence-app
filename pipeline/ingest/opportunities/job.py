@@ -17,6 +17,8 @@ from pipeline.ingest.runs import get_chunk, save_chunk
 
 OVERLAP_DAYS = 2
 MAX_WINDOW_DAYS = 365  # docs: postedFrom..postedTo at most 1 year apart
+# 12 months that fit one ≤365-day window (one query per NAICS code, not two).
+DEFAULT_BACKFILL_DAYS = MAX_WINDOW_DAYS - 1
 
 
 @dataclass(frozen=True)
@@ -38,6 +40,39 @@ def windows(since: date, until: date) -> list[Window]:
     return result
 
 
+def chunk_key(window: Window, code: str) -> str:
+    return f"posted:{window.start}:{window.end}:naics:{code}"
+
+
+def latest_backfill_plan(ctx: IngestContext) -> tuple[date, date] | None:
+    """The date range of the most recent backfill run (finished or not)."""
+    row = ctx.meta.execute(
+        """
+        SELECT (params ->> 'posted_from')::date, (params ->> 'posted_to')::date
+        FROM ingest_runs
+        WHERE source = %s AND job = 'backfill' AND params ? 'posted_from' AND id <> %s
+        ORDER BY started_at DESC LIMIT 1
+        """,
+        (SOURCE, ctx.run.id),
+    ).fetchone()
+    return (row[0], row[1]) if row else None
+
+
+def plan_progress(
+    ctx: IngestContext, since: date, until: date, vertical: frozenset[str]
+) -> tuple[int, int]:
+    """(chunks done, chunks in the plan)."""
+    keys = [chunk_key(w, code) for w in windows(since, until) for code in sorted(vertical)]
+    row = ctx.meta.execute(
+        """
+        SELECT count(*) FROM ingest_chunks
+        WHERE source = %s AND status = 'done' AND chunk_key = ANY(%s)
+        """,
+        (SOURCE, keys),
+    ).fetchone()
+    return (int(row[0]) if row else 0, len(keys))
+
+
 def latest_posted_to(ctx: IngestContext) -> date | None:
     row = ctx.meta.execute(
         """
@@ -56,13 +91,37 @@ class OpportunitiesJob:
     vertical: frozenset[str]
     _reported_fields: set[str] = field(default_factory=set)
 
+    def continue_backfill(self, today: date, since: date | None = None) -> None:
+        """Resume the latest unfinished backfill with its original dates (chunk keys only
+        match if the dates don't move); otherwise start one from `since` (default: the
+        last 12 months). A finished plan is left alone: the daily delta keeps it current."""
+        plan = latest_backfill_plan(self.ctx)
+        if plan is not None and (since is None or plan[0] == since):
+            plan_since, plan_until = plan
+            done, total = plan_progress(self.ctx, plan_since, plan_until, self.vertical)
+            if done < total:
+                self.ctx.log(
+                    f"Resuming backfill {plan_since}..{plan_until}: {done} of {total} chunks done."
+                )
+                self.backfill(plan_since, plan_until)
+                return
+            if since is None:
+                self.ctx.log(
+                    f"Backfill {plan_since}..{plan_until} is complete ({total} chunks). "
+                    "Nothing to do; the daily delta keeps notices current."
+                )
+                return
+        start = since or today - timedelta(days=DEFAULT_BACKFILL_DAYS)
+        self.ctx.log(f"Starting backfill {start}..{today}.")
+        self.backfill(start, today)
+
     def backfill(self, since: date, until: date) -> None:
         update_run_params(
             self.ctx, {"posted_from": since.isoformat(), "posted_to": until.isoformat()}
         )
         for window in windows(since, until):
             for code in sorted(self.vertical):
-                key = f"posted:{window.start}:{window.end}:naics:{code}"
+                key = chunk_key(window, code)
                 chunk = get_chunk(self.ctx.data, SOURCE, key)
                 if chunk is not None and chunk.status == "done":
                     continue
