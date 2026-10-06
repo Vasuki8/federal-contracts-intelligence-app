@@ -131,6 +131,12 @@ Business-type flags: `c8a_program_participant`, `sba_certified_8a_joint_venture`
 - `awarding_agency_code` can be 3 or 4 characters (`005`, `1100`).
 - `solicitation_identifier` is often empty on task orders. This matters for M2's
   same-solicitation link.
+- `date_type: action_date` matches awards with **any** transaction in the window. A 30-day
+  window returned contracts with `award_base_action_date` from 2017 to 2025 and
+  `award_latest_action_date` inside the window. Award-level rows are one per award, so an
+  award active in several windows is stored once (newest `last_modified_date` wins).
+- Size (Neon, 2026-10-06): one year of the 11 vertical codes is about 124,600 awards and
+  19,000 entities, and the database is about 200 MB.
 
 ⚠ still to verify: whether IDVs come in the same file (the sample had only `A`, `C`, `D`).
 

@@ -1,4 +1,5 @@
-"""`app status`: last run, errors, backfill progress, request budget and row counts."""
+"""`app status`: last run, errors, backfill progress, request budget, row counts and
+storage (database size, largest tables, raw archive)."""
 
 from datetime import UTC, datetime
 
@@ -21,6 +22,12 @@ TABLES = (
     ("naics (in vertical)", "naics WHERE in_vertical"),
     ("raw_files", "raw_files"),
 )
+DATABASE_SIZE = "SELECT pg_database_size(current_database())"
+# Table + indexes + TOAST, for the tables in the app's schema.
+LARGEST_TABLES = """
+    SELECT relname, pg_total_relation_size(relid) FROM pg_stat_user_tables
+    WHERE schemaname = current_schema() ORDER BY 2 DESC, 1 LIMIT 5
+"""
 
 
 def _first_line(text: str | None) -> str:
@@ -29,6 +36,15 @@ def _first_line(text: str | None) -> str:
 
 def _when(value: datetime | None) -> str:
     return value.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC") if value else "-"
+
+
+def _scalar(conn: psycopg.Connection[TupleRow], sql: str) -> int:
+    row = conn.execute(sql).fetchone()
+    return int(row[0]) if row and row[0] is not None else 0
+
+
+def _megabytes(label: str, size: int) -> str:
+    return f"  {label:<22}{size / 1_000_000:>12,.1f}"
 
 
 def build_report(
@@ -84,6 +100,10 @@ def build_report(
     for label, from_clause in TABLES:
         row = conn.execute(f"SELECT count(*) FROM {from_clause}").fetchone()
         lines.append(f"  {label:<22}{row[0] if row else 0:>12,}")
-    size = conn.execute("SELECT coalesce(sum(bytes), 0) FROM raw_files").fetchone()
-    lines.append(f"  {'raw archive (MB)':<22}{(size[0] if size else 0) / 1_000_000:>12,.1f}")
+
+    lines.append("Storage (MB)")
+    lines.append(_megabytes("database", _scalar(conn, DATABASE_SIZE)))
+    for name, size in conn.execute(LARGEST_TABLES).fetchall():
+        lines.append(_megabytes(f"  {name}", size))
+    lines.append(_megabytes("raw archive", _scalar(conn, "SELECT sum(bytes) FROM raw_files")))
     return lines

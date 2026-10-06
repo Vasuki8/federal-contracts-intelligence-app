@@ -10,10 +10,12 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import polars as pl
 import psycopg
 import pytest
 from psycopg.rows import TupleRow
 
+from pipeline.ingest.archive import archive_bytes
 from pipeline.ingest.awards import SOURCE
 from pipeline.ingest.awards.client import build_client
 from pipeline.ingest.awards.job import AwardsJob, Window, fiscal_year_windows, quarters
@@ -121,6 +123,50 @@ def test_load_awards_casts_links_and_is_idempotent(conn: Conn) -> None:
     assert types[0]["contracting_officers_determination_of_business_size"] == "SMALL BUSINESS"
     naics = conn.execute("SELECT title, in_vertical FROM naics WHERE code = '541512'").fetchone()
     assert naics == ("COMPUTER SYSTEMS DESIGN SERVICES", True)
+
+
+def row_versions(conn: Conn, table: str, key: str) -> list[tuple[Any, ...]]:
+    """xmin changes whenever Postgres rewrites a row (each statement commits on its own)."""
+    return conn.execute(f"SELECT {key}, xmin::text FROM {table} ORDER BY 1").fetchall()
+
+
+@pytest.mark.db
+def test_reloading_unchanged_rows_rewrites_nothing(conn: Conn, tmp_path: Path) -> None:
+    rows = read_award_csv(FY2025).frame
+    load_awards(conn, rows, None, VERTICAL)
+    awards = row_versions(conn, "awards", "award_key")
+    entities = row_versions(conn, "entities", "uei")
+    # The same rows in a new download (another raw file) are still unchanged.
+    file = archive_bytes(
+        conn,
+        root=tmp_path,
+        source=SOURCE,
+        content=b"PK",
+        suffix=".zip",
+        run_id=None,
+        http_status=200,
+        request_params={},
+    )
+    again = load_awards(conn, rows, file.id, VERTICAL)
+    assert (again.awards_upserted, again.entities_upserted) == (0, 0)
+    assert row_versions(conn, "awards", "award_key") == awards
+    assert row_versions(conn, "entities", "uei") == entities
+
+
+@pytest.mark.db
+def test_changed_content_with_the_same_timestamp_is_updated(conn: Conn) -> None:
+    rows = read_award_csv(FY2025).frame
+    load_awards(conn, rows, None, VERTICAL)
+    column = "prime_award_base_transaction_description"
+    edited = rows.with_columns(
+        pl.when(pl.col("contract_award_unique_key") == TASK_KEY)
+        .then(pl.lit("CLOUD HOSTING, REVISED"))
+        .otherwise(pl.col(column))
+        .alias(column)
+    )
+    assert load_awards(conn, edited, None, VERTICAL).awards_upserted == 1
+    row = conn.execute("SELECT description FROM awards WHERE award_key = %s", (TASK_KEY,))
+    assert row.fetchone() == ("CLOUD HOSTING, REVISED",)
 
 
 @pytest.mark.db

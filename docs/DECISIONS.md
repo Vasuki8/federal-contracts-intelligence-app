@@ -131,3 +131,12 @@ The first awards backfill on Neon failed with "the connection is closed". USAspe
 - Starting a job marks earlier runs of it still `running` as failed. While the job's lock is held, no such run can be alive.
 
 The pending download had already been checkpointed, so the re-run collects the finished file instead of waiting again.
+
+### 2026-10-06 · 3 years of award history on Neon's free plan (BUILD_PLAN says 5)
+One year of vertical awards takes about 200 MB on Neon. Neon's Free plan allows 1 GB per project (raised from 0.5 GB on 2026-10-02). Five years could approach that limit before notices and M2's tables are added, so the user chose **3 years** for now (`awards-backfill --years 3`; the Ingest workflow's default is now 3). Extend to 5 once `app status` shows enough room, or after moving to a paid plan.
+
+Less history is lost than it looks. The `action_date` filter matches any award with a transaction in the window, not only awards signed in it: the live 30-day sample contained contracts first signed in 2017, 2020–2024 and 2025. So any window already includes every contract still being modified, which is where current incumbents come from. Earlier years mostly add contracts that have ended, which give history (past winners, bid counts) but are not today's incumbents. An award with transactions in several years is stored once, so each extra year adds fewer rows than the first.
+
+Two changes support this:
+- **Reloads cost no storage.** Award and entity upserts now rewrite a row only if its content changed (`ROW(...) IS DISTINCT FROM ROW(...)`), still with the newer-`last_modified` rule. Before, every reload rewrote every row. That created dead row versions, and Neon counts their space until vacuum reuses it. The 3-year run re-downloads FY2026, because its window now starts 1 October instead of 6 October, but writes only the rows that changed. `updated_at` now means "last changed". `raw_file_id` keeps pointing at the first file that had the current content.
+- **`app status` shows storage:** database size (`pg_database_size`), the 5 largest tables with their indexes, and the raw archive. Neon's dashboard figure can be higher because it also counts restore history.

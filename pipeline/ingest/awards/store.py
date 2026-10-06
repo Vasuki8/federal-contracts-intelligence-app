@@ -1,5 +1,6 @@
 """Load award rows: COPY into a temp table, then set-based upserts of reference data,
-entities and awards. Newer `last_modified_date` wins, so overlapping chunks are safe."""
+entities and awards. Newer `last_modified_date` wins, so overlapping chunks are safe.
+Rows whose content is unchanged are not rewritten: a reload costs no storage."""
 
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -134,12 +135,31 @@ def _upsert_reference_data(conn: psycopg.Connection[TupleRow], vertical: list[st
     )
 
 
+def _changed(table: str, columns: Iterable[str]) -> str:
+    """Upsert condition: some column differs between the stored row and the incoming one."""
+    names = list(columns)
+    stored = ", ".join(f"{table}.{c}" for c in names)
+    incoming = ", ".join(f"excluded.{c}" for c in names)
+    return f"ROW({stored}) IS DISTINCT FROM ROW({incoming})"
+
+
+ENTITY_COLUMNS = (
+    "name",
+    "parent_uei",
+    "parent_name",
+    "cage",
+    "state",
+    "business_types",
+    "last_modified",
+)
+
+
 def _upsert_entities(conn: psycopg.Connection[TupleRow]) -> int:
     uei = _text("recipient_uei")
     modified = _cast("last_modified_date", "timestamptz")
+    updates = ", ".join(f"{c} = excluded.{c}" for c in ENTITY_COLUMNS)
     cursor = conn.execute(f"""
-        INSERT INTO entities
-            (uei, name, parent_uei, parent_name, cage, state, business_types, last_modified)
+        INSERT INTO entities (uei, {", ".join(ENTITY_COLUMNS)})
         SELECT DISTINCT ON ({uei})
             {uei}, {_text("recipient_name")}, {_text("recipient_parent_uei")},
             {_text("recipient_parent_name")}, {_text("cage_code")},
@@ -147,13 +167,10 @@ def _upsert_entities(conn: psycopg.Connection[TupleRow]) -> int:
         FROM {TMP} t
         WHERE {uei} IS NOT NULL
         ORDER BY {uei}, {modified} DESC NULLS LAST
-        ON CONFLICT (uei) DO UPDATE SET
-            name = excluded.name, parent_uei = excluded.parent_uei,
-            parent_name = excluded.parent_name, cage = excluded.cage, state = excluded.state,
-            business_types = excluded.business_types, last_modified = excluded.last_modified,
-            updated_at = now()
-        WHERE entities.last_modified IS NULL
-           OR excluded.last_modified >= entities.last_modified
+        ON CONFLICT (uei) DO UPDATE SET {updates}, updated_at = now()
+        WHERE (entities.last_modified IS NULL
+               OR excluded.last_modified >= entities.last_modified)
+          AND {_changed("entities", ENTITY_COLUMNS)}
     """)
     return cursor.rowcount
 
@@ -197,9 +214,8 @@ def _upsert_awards(conn: psycopg.Connection[TupleRow], raw_file_id: int | None) 
     }
     columns = ", ".join([*targets, "raw_file_id"])
     selects = ", ".join(f"{expr} AS {name}" for name, expr in targets.items())
-    updates = ", ".join(
-        f"{name} = excluded.{name}" for name in [*targets, "raw_file_id"] if name != "award_key"
-    )
+    content = [name for name in targets if name != "award_key"]
+    updates = ", ".join(f"{name} = excluded.{name}" for name in [*content, "raw_file_id"])
     cursor = conn.execute(
         f"""
         INSERT INTO awards ({columns})
@@ -213,7 +229,8 @@ def _upsert_awards(conn: psycopg.Connection[TupleRow], raw_file_id: int | None) 
         WHERE award_key IS NOT NULL
         ORDER BY award_key, last_modified DESC NULLS LAST
         ON CONFLICT (award_key) DO UPDATE SET {updates}, updated_at = now()
-        WHERE awards.last_modified IS NULL OR excluded.last_modified >= awards.last_modified
+        WHERE (awards.last_modified IS NULL OR excluded.last_modified >= awards.last_modified)
+          AND {_changed("awards", content)}
         """,
         (raw_file_id,),
     )

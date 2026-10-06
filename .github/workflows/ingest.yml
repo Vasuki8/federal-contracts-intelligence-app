@@ -23,7 +23,7 @@ on:
       years:
         description: Years of award history (awards-backfill only)
         type: string
-        default: "5"
+        default: "3"
 
 permissions:
   contents: read
@@ -43,7 +43,7 @@ jobs:
       SAM_DAILY_REQUEST_LIMIT: ${{ vars.SAM_DAILY_REQUEST_LIMIT || '10' }}
       RAW_ARCHIVE_DIR: ${{ github.workspace }}/data/raw
       JOB: ${{ github.event_name == 'schedule' && 'daily' || inputs.job }}
-      YEARS: ${{ inputs.years || '5' }}
+      YEARS: ${{ inputs.years || '3' }}
     steps:
       - name: Check secrets
         id: ready

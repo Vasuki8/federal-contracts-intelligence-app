@@ -79,7 +79,11 @@ def test_status_report_sections(
     assert "sam_opportunities backfill: partial" in text
     assert "note: Daily request budget" in text
     assert "SAM.gov requests today (UTC): 0 of 10" in text
-    assert "notices" in text and "raw archive (MB)" in text
+    assert "notices" in text
+    storage = text.split("Storage (MB)\n", 1)[1].splitlines()
+    assert storage[0].split()[0] == "database"
+    assert storage[-1].split()[:2] == ["raw", "archive"]
+    assert len(storage) == 7  # database, the 5 largest tables, raw archive
 
 
 def test_offset_semantics_detection() -> None:
