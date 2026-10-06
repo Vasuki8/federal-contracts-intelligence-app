@@ -1,0 +1,70 @@
+# Incumbent matcher settings (M2). Tune against pipeline/tests/eval/labeled_matches.csv
+# with `app match eval`, and record every change in docs/DECISIONS.md.
+
+# Stored with every match, so results can be traced to the settings that made them.
+matcher_version: "2026-10-06.1"
+
+# Notice types that can have an incumbent (SAM.gov `type` values).
+notice_types:
+  - Solicitation
+  - Combined Synopsis/Solicitation
+  - Presolicitation
+  - Sources Sought
+  - Special Notice
+
+# Reference date = response deadline, or posted date + this many days when there is none.
+days_after_posting_without_deadline: 30
+
+candidates:
+  # The incumbent's last possible end date must fall in this window around the reference date.
+  months_before: 6
+  months_after: 18
+  # USAspending award types that can be an incumbent: BPA calls, purchase orders, delivery
+  # orders, definitive contracts, IDCs and BPAs. GWACs (IDV_A), Schedules (IDV_C) and BOAs
+  # (IDV_D) are contract vehicles, not incumbents.
+  award_types: [A, B, C, D, IDV_B, IDV_B_A, IDV_B_B, IDV_B_C, IDV_E]
+  vehicle_award_types: [IDV_A, IDV_C, IDV_D]
+  min_total_value: 25000
+  max_per_notice: 200
+
+weights:
+  # Contracts from the same office usually share NAICS, PSC, set-aside and timing, so the
+  # description carries the most weight: it is what tells concurrent contracts apart.
+  office: 0.20
+  text: 0.35
+  naics: 0.10
+  end_date: 0.15
+  psc: 0.10
+  set_aside: 0.04
+  value: 0.03
+  vehicle: 0.03
+
+features:
+  office_same_subtier_only: 0.4
+  naics_same_group: 0.6       # same first 4 digits
+  psc_same_prefix2: 0.6
+  psc_same_prefix1: 0.3
+  psc_missing: 0.5
+  value_missing: 0.5
+  vehicle_missing: 0.5
+  # Cosine similarity at which the text feature reaches 1.
+  text_full_at: 0.5
+  # End date: 1 inside [ideal_from, ideal_to] days from the reference date, falling to 0
+  # at the window edges.
+  end_date_ideal_from_days: -30
+  end_date_ideal_to_days: 270
+
+explicit_reference:
+  score: 0.97
+  # Words near a cited contract number that mark it as the contract being replaced.
+  context_words: [incumbent, follow-on, follow on, bridge, recompete, re-compete, successor,
+                  predecessor, current contract, currently performed, extension]
+  context_chars: 120
+
+decision:
+  incumbent_threshold: 0.8
+  margin: 0.15
+  possible_floor: 0.35
+  max_possible: 3
+  store_floor: 0.2
+  store_max: 10

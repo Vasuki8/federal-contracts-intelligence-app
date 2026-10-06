@@ -118,11 +118,47 @@ export interface IngestRuns {
   status: Generated<string>;
 }
 
+export interface MatchReviews {
+  award_key: string;
+  created_at: Generated<Timestamp>;
+  decision: string;
+  id: Generated<Int8>;
+  match_id: Int8 | null;
+  note: string | null;
+  notice_id: string;
+  reviewer: string | null;
+}
+
 export interface Naics {
   code: string;
   in_vertical: Generated<boolean>;
   title: string | null;
   updated_at: Generated<Timestamp>;
+}
+
+export interface NoticeAwardMatches {
+  award_key: string;
+  created_at: Generated<Timestamp>;
+  evidence: Generated<Json>;
+  id: Generated<Int8>;
+  kind: string;
+  matcher_version: string;
+  method: string;
+  notice_id: string;
+  piid: string | null;
+  rank: number | null;
+  score: Numeric;
+  shown: Generated<string>;
+  status: Generated<string>;
+  updated_at: Generated<Timestamp>;
+}
+
+export interface NoticeDescriptions {
+  fetched_at: Generated<Timestamp>;
+  notice_id: string;
+  raw_file_id: Int8 | null;
+  text: string | null;
+  version: number;
 }
 
 export interface Notices {
@@ -193,6 +229,30 @@ export interface RawFiles {
   source: string;
 }
 
+export interface Recompetes {
+  award_key: string;
+  award_type_code: string | null;
+  awarding_agency_code: string | null;
+  awarding_agency_name: string | null;
+  awarding_office_code: string | null;
+  awarding_office_name: string | null;
+  awarding_sub_agency_code: string | null;
+  awarding_sub_agency_name: string | null;
+  linked_notice_id: string | null;
+  naics: string | null;
+  number_of_offers: number | null;
+  obligated_total: Numeric | null;
+  piid: string | null;
+  psc: string | null;
+  recipient_name: string | null;
+  recipient_uei: string | null;
+  refreshed_at: Generated<Timestamp>;
+  set_aside: string | null;
+  set_aside_code: string | null;
+  total_value: Numeric | null;
+  ultimate_end: Timestamp;
+}
+
 export interface DB {
   agencies: Agencies;
   alembic_version: AlembicVersion;
@@ -200,9 +260,13 @@ export interface DB {
   entities: Entities;
   ingest_chunks: IngestChunks;
   ingest_runs: IngestRuns;
+  match_reviews: MatchReviews;
   naics: Naics;
+  notice_award_matches: NoticeAwardMatches;
+  notice_descriptions: NoticeDescriptions;
   notice_versions: NoticeVersions;
   notices: Notices;
   offices: Offices;
   raw_files: RawFiles;
+  recompetes: Recompetes;
 }
