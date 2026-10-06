@@ -72,7 +72,9 @@ class ResponseArchiver:
         error: Exception | None,
     ) -> None:
         self._ctx.run.counters.requests_made += 1
-        request = {"method": method, "url": url, "params": dict(params)}
+        request: dict[str, Any] = {"method": method, "url": url, "params": dict(params)}
+        if response is not None and (limits := rate_limit_headers(response)):
+            request["rate_limit"] = limits
         if response is not None:
             content = response.content
             status: int | None = response.status_code
@@ -90,6 +92,15 @@ class ResponseArchiver:
             request_params=request,
             compress=self._compress,
         )
+
+
+def rate_limit_headers(response: httpx.Response) -> dict[str, str]:
+    """api.sam.gov reports the key's limit in X-RateLimit-* headers (when it sends them)."""
+    return {
+        name.lower(): value
+        for name, value in response.headers.items()
+        if name.lower().startswith("x-ratelimit-")
+    }
 
 
 @contextmanager

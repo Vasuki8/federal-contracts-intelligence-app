@@ -2,8 +2,9 @@
 
 A notice's solicitation number matching an award's solicitation id within the same
 sub-tier agency (solicitation numbers repeat across agencies), or an award notice whose
-`award.number` is the award's PIID. These label past notices with their winner, feed the
-evaluation, and mark incumbents that have already been replaced."""
+`award.number` (or, for orders, its solicitation number) is the award's PIID. These
+label past notices with their winner, feed the evaluation, and mark incumbents that
+have already been replaced."""
 
 from collections.abc import Iterable
 
@@ -40,6 +41,15 @@ def link_history(conn: Conn, vertical: Iterable[str], matcher_version: str) -> t
             JOIN awards a ON a.piid_norm = {award_number}
                          AND a.awarding_sub_agency_code = n.subtier_code
             WHERE n.award ? 'number'
+              AND (n.naics = ANY(%(codes)s) OR n.naics_codes && %(codes)s)
+            UNION ALL
+            -- Award notices for orders often carry the order number as the solicitation
+            -- number and the contract vehicle as the award number.
+            SELECT n.notice_id, a.award_key, a.piid, 'award_notice_number'
+            FROM notices n
+            JOIN awards a ON a.piid_norm = n.solicitation_number_norm
+                         AND a.awarding_sub_agency_code = n.subtier_code
+            WHERE n.type = 'Award Notice'
               AND (n.naics = ANY(%(codes)s) OR n.naics_codes && %(codes)s)
         ) links
         ORDER BY notice_id, award_key, method

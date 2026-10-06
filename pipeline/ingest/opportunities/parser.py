@@ -87,8 +87,9 @@ class Notice(BaseModel):
     place_of_performance: dict[str, Any] | None
     pop_state: str | None
     description_url: str | None
-    attachment_links: tuple[str, ...]
-    contacts: tuple[dict[str, Any], ...]
+    # None = unknown (the CSV extract has no attachment list); () = none listed.
+    attachment_links: tuple[str, ...] | None
+    contacts: tuple[dict[str, Any], ...] | None
     award: dict[str, Any] | None
     ui_link: str | None
     active: bool | None
@@ -148,7 +149,7 @@ def parse_notice(record: Mapping[str, Any]) -> Notice | None:
         base_type=clean_text(record.get("baseType")),
         posted_at=parse_datetime(record.get("postedDate")),
         response_deadline=parse_datetime(deadline),
-        response_deadline_has_time=_has_time(deadline),
+        response_deadline_has_time=has_time(deadline),
         naics=naics,
         naics_codes=tuple(_strings(record.get("naicsCodes")) or ([naics] if naics else [])),
         psc=clean_text(record.get("classificationCode")),
@@ -164,7 +165,7 @@ def parse_notice(record: Mapping[str, Any]) -> Notice | None:
         contacts=tuple(_contacts(_first(record, "pointOfContact", "pointofContact"))),
         award=_mapping(record.get("award")) or None,
         ui_link=clean_text(record.get("uiLink")),
-        active=_yes_no(record.get("active")),
+        active=yes_no(record.get("active")),
         archive_type=clean_text(record.get("archiveType")),
         archive_date=parse_date(record.get("archiveDate")),
     )
@@ -193,7 +194,7 @@ def _contacts(value: Any) -> list[dict[str, Any]]:
     return [dict(item) for item in value if isinstance(item, Mapping)]
 
 
-def _has_time(value: Any) -> bool | None:
+def has_time(value: Any) -> bool | None:
     """Whether a date value carries a time part ("2026-10-13" → False)."""
     if parse_datetime(value) is None:
         return None
@@ -201,7 +202,7 @@ def _has_time(value: Any) -> bool | None:
     return len(text) > len("YYYY-MM-DD")
 
 
-def _yes_no(value: Any) -> bool | None:
+def yes_no(value: Any) -> bool | None:
     text = clean_text(value)
     if text is None:
         return None

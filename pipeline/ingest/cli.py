@@ -11,6 +11,9 @@ from pipeline.ingest.awards.job import AwardsJob
 from pipeline.ingest.context import IngestContext
 from pipeline.ingest.opportunities import SOURCE as OPPORTUNITIES
 from pipeline.ingest.opportunities.client import build_client as build_sam_client
+from pipeline.ingest.opportunities.extract import SOURCE as EXTRACT
+from pipeline.ingest.opportunities.extract_job import ExtractJob
+from pipeline.ingest.opportunities.extract_job import build_http as build_extract_http
 from pipeline.ingest.opportunities.job import DEFAULT_BACKFILL_DAYS, OpportunitiesJob
 from pipeline.ingest.samples import sam_sample, usaspending_sample
 from pipeline.runner import run_job
@@ -148,3 +151,45 @@ def sample_fixtures() -> None:
             close()
 
     run_job(settings, database_url, AWARDS, "sample", {}, awards)
+
+
+@ingest_app.command("notice-extract")
+def notice_extract(
+    force: Annotated[bool, typer.Option(help="Load even if this exact file was loaded.")] = False,
+) -> None:
+    """Every active notice from SAM.gov's daily CSV, with descriptions (no key needed)."""
+    settings, database_url, _ = _settings_or_exit()
+    vertical = vertical_naics()
+
+    def action(ctx: IngestContext) -> None:
+        with build_extract_http() as http:
+            ExtractJob(ctx, http, vertical).daily(force=force)
+
+    run_job(settings, database_url, EXTRACT, "daily", {}, action)
+
+
+@ingest_app.command("notice-archive")
+def notice_archive(
+    fiscal_year: Annotated[
+        int, typer.Option(min=2000, max=2100, help="Fiscal year of the archive file.")
+    ],
+    since: Annotated[
+        datetime | None,
+        typer.Option(
+            formats=DATE_FORMATS,
+            metavar="YYYY-MM-DD",
+            help="Only notices posted on or after this date.",
+        ),
+    ] = None,
+    force: Annotated[bool, typer.Option(help="Load even if this exact file was loaded.")] = False,
+) -> None:
+    """Archived notices for one fiscal year from SAM.gov's archive CSV (~1 GB download)."""
+    settings, database_url, _ = _settings_or_exit()
+    vertical = vertical_naics()
+    start = since.date() if since else None
+
+    def action(ctx: IngestContext) -> None:
+        with build_extract_http() as http:
+            ExtractJob(ctx, http, vertical).archive(fiscal_year, start, force=force)
+
+    run_job(settings, database_url, EXTRACT, "archive", {"fiscal_year": fiscal_year}, action)

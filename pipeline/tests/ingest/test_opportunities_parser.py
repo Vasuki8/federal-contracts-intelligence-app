@@ -29,6 +29,7 @@ def test_docs_example_1_award_notice() -> None:
     assert notice.pop_state == "WI"
     assert notice.award is not None
     assert notice.award["awardee"]["ueiSAM"] == "025114695AST"
+    assert notice.contacts is not None
     assert notice.contacts[0]["fullName"] == "Jesse L. Jones"
     # Deprecated department/subTier/office names are kept when no full path is given.
     assert (

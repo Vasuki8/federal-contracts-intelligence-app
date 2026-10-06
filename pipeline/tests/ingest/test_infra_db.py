@@ -4,6 +4,7 @@ import hashlib
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import httpx
 import psycopg
 import pytest
 from psycopg.rows import TupleRow
@@ -204,3 +205,23 @@ def test_a_failure_is_recorded_even_when_the_connections_died(
     assert row is not None
     assert row[0] == "failed"
     assert "RuntimeError" in row[1]
+
+
+def test_rate_limit_headers_are_recorded_and_shown(db_url: str, conn: Conn, tmp_path: Path) -> None:
+    from pipeline.ingest.context import ResponseArchiver
+    from pipeline.status import build_report
+
+    response = httpx.Response(
+        200,
+        content=b"{}",
+        headers={"X-RateLimit-Limit": "1000", "X-RateLimit-Remaining": "998", "Other": "x"},
+    )
+    with ingest_run(db_url, tmp_path, "sam_opportunities", "delta", {}, lambda _: None) as ctx:
+        archiver = ResponseArchiver(ctx, "sam_opportunities", ".json", compress=False)
+        archiver(
+            method="GET", url="https://api.sam.gov/x", params={}, response=response, error=None
+        )
+    row = conn.execute("SELECT request_params -> 'rate_limit' FROM raw_files").fetchone()
+    assert row == ({"x-ratelimit-limit": "1000", "x-ratelimit-remaining": "998"},)
+    report = "\n".join(build_report(conn, 10, datetime.now(UTC)))
+    assert "SAM.gov reported a limit of 1000, 998 left" in report

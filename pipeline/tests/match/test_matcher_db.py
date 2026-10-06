@@ -11,7 +11,9 @@ from psycopg.rows import TupleRow
 
 from pipeline.ingest.context import ingest_run
 from pipeline.match.config import load_matching_config
+from pipeline.match.diagnose import diagnose
 from pipeline.match.job import MatchJob, MatchSummary
+from pipeline.recompetes import refresh_recompetes
 from pipeline.tests.match.factories import add_award, add_description, add_notice
 
 pytestmark = pytest.mark.db
@@ -154,3 +156,52 @@ def test_an_incumbent_already_replaced_is_not_a_candidate_again(
     )
     run_matcher(db_url, tmp_path)
     assert "A1" not in matches(world, "N1")
+
+
+def test_recompetes_window_types_and_links(conn: Conn, db_url: str, tmp_path: Path) -> None:
+    # TODAY = 2026-10-06, so the window is 2027-04-06 .. 2028-10-06.
+    add_award(conn, "EDGE_IN", ultimate_end=date(2027, 4, 6))
+    add_award(conn, "LATE_IN", ultimate_end=date(2028, 10, 6), recipient_name=None)
+    add_award(conn, "TOO_SOON", ultimate_end=date(2027, 4, 5))
+    add_award(conn, "TOO_LATE", ultimate_end=date(2028, 10, 7))
+    add_award(conn, "VEHICLE", award_type_code="IDV_A", ultimate_end=date(2028, 1, 1))
+    add_award(conn, "SMALL", total_value=1_000, ultimate_end=date(2028, 1, 1))
+    add_award(conn, "OTHER_NAICS", naics="236220", ultimate_end=date(2028, 1, 1))
+    add_award(
+        conn,
+        "IDC",
+        award_type_code="IDV_B",
+        ultimate_end=None,
+        ordering_period_end=date(2028, 1, 1),
+    )
+    add_notice(conn, "N9")
+    conn.execute(
+        """
+        INSERT INTO notice_award_matches
+            (notice_id, award_key, kind, method, score, shown, matcher_version)
+        VALUES ('N9', 'EDGE_IN', 'incumbent', 'candidate', 0.9, 'incumbent', 't')
+        """
+    )
+    conn.execute("INSERT INTO entities (uei, name) VALUES ('UEI0000000A1', 'ACME IT LLC')")
+    with psycopg.connect(db_url) as data:
+        count = refresh_recompetes(data, VERTICAL, CFG, TODAY)
+        data.commit()
+        assert refresh_recompetes(data, VERTICAL, CFG, TODAY) == count  # rebuilt, not doubled
+        data.commit()
+    rows: dict[str, str | None] = dict(
+        conn.execute("SELECT award_key, linked_notice_id FROM recompetes").fetchall()
+    )
+    assert rows == {"EDGE_IN": "N9", "LATE_IN": None, "IDC": None}
+    name = conn.execute("SELECT recipient_name FROM recompetes WHERE award_key = 'LATE_IN'")
+    assert name.fetchone() == ("ACME IT LLC",)
+
+
+def test_diagnose_reports_inputs_and_results(db_url: str, world: Conn, tmp_path: Path) -> None:
+    run_matcher(db_url, tmp_path)
+    text = "\n".join(diagnose(world, VERTICAL, CFG))
+    assert "Solicitation" in text and "archived" in text
+    assert "office found in awards        2 of 2 (100%)" in text
+    assert "active notices with a description  2 of 2 (100%)" in text
+    assert "incumbent shown               2 of 2 (100%)" in text
+    assert "cites a contract number       1 of 2 (50%)" in text
+    assert "notices linked to the award made from them  2" in text

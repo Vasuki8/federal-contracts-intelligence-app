@@ -9,8 +9,10 @@ from psycopg.rows import TupleRow
 from pipeline.ingest.awards import SOURCE as AWARDS
 from pipeline.ingest.budget import requests_today
 from pipeline.ingest.opportunities import SOURCE as OPPORTUNITIES
+from pipeline.match import SOURCE as MATCHER
+from pipeline.recompetes import SOURCE as RECOMPETES
 
-SOURCES = (OPPORTUNITIES, AWARDS)
+SOURCES = (OPPORTUNITIES, AWARDS, MATCHER, RECOMPETES)
 TABLES = (
     ("notices", "notices"),
     ("notices (active)", "notices WHERE active"),
@@ -21,6 +23,12 @@ TABLES = (
     ("offices", "offices"),
     ("naics (in vertical)", "naics WHERE in_vertical"),
     ("raw_files", "raw_files"),
+    ("notice descriptions", "notice_descriptions"),
+    ("incumbents shown", "notice_award_matches WHERE kind = 'incumbent' AND shown = 'incumbent'"),
+    ("possible incumbents", "notice_award_matches WHERE kind = 'incumbent' AND shown = 'possible'"),
+    ("award links (history)", "notice_award_matches WHERE kind = 'resulting_award'"),
+    ("match reviews", "match_reviews"),
+    ("recompetes", "recompetes"),
 )
 DATABASE_SIZE = "SELECT pg_database_size(current_database())"
 # Table + indexes + TOAST, for the tables in the app's schema.
@@ -95,6 +103,20 @@ def build_report(
 
     used = requests_today(conn, OPPORTUNITIES, now)
     lines.append(f"SAM.gov requests today (UTC): {used} of {sam_daily_limit}")
+    reported = conn.execute(
+        """
+        SELECT request_params -> 'rate_limit', fetched_at FROM raw_files
+        WHERE source = %s AND request_params ? 'rate_limit'
+        ORDER BY fetched_at DESC LIMIT 1
+        """,
+        (OPPORTUNITIES,),
+    ).fetchone()
+    if reported and reported[0]:
+        limits = reported[0]
+        lines.append(
+            f"  SAM.gov reported a limit of {limits.get('x-ratelimit-limit', '?')}, "
+            f"{limits.get('x-ratelimit-remaining', '?')} left, at {_when(reported[1])}"
+        )
 
     lines.append("Rows")
     for label, from_clause in TABLES:

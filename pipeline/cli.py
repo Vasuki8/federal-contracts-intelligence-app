@@ -8,7 +8,7 @@ import typer
 from pipeline import __version__
 from pipeline.db import connect, server_version
 from pipeline.ingest.cli import ingest_app
-from pipeline.match.cli import match_app
+from pipeline.match.cli import match_app, recompetes_app
 from pipeline.migrate import current_revision, head_revision
 from pipeline.settings import MissingSettingError, Settings, get_settings
 from pipeline.status import build_report
@@ -20,6 +20,7 @@ app = typer.Typer(
 )
 app.add_typer(ingest_app, name="ingest")
 app.add_typer(match_app, name="match")
+app.add_typer(recompetes_app, name="recompetes")
 
 
 @app.command()

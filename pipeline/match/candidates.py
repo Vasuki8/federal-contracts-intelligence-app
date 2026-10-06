@@ -43,8 +43,8 @@ def reference_date(
 def load_notices(
     conn: Conn, vertical: Iterable[str], cfg: MatchingConfig, today: date
 ) -> list[NoticeFacts]:
-    """Active vertical notices of a type that can have an incumbent, with the latest
-    description text when one has been loaded."""
+    """Active vertical notices of a type that can have an incumbent and not yet past their
+    archive date, with the latest description text when one has been loaded."""
     rows = conn.execute(
         """
         SELECT n.notice_id, n.title, d.text, n.solicitation_number, n.subtier_code,
@@ -56,10 +56,11 @@ def load_notices(
             WHERE nd.notice_id = n.notice_id ORDER BY nd.version DESC LIMIT 1
         ) d ON true
         WHERE n.active AND n.type = ANY(%(types)s)
+          AND (n.archive_date IS NULL OR n.archive_date >= %(today)s)
           AND (n.naics = ANY(%(vertical)s) OR n.naics_codes && %(vertical)s)
         ORDER BY n.notice_id
         """,
-        {"types": list(cfg.notice_types), "vertical": sorted(vertical)},
+        {"types": list(cfg.notice_types), "vertical": sorted(vertical), "today": today},
     ).fetchall()
     notices = []
     for row in rows:

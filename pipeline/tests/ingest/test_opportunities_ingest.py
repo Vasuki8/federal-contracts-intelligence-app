@@ -101,8 +101,16 @@ def test_amendment_creates_version_2_with_a_diff(conn: Conn) -> None:
     assert row is not None
     diff, version = row
     assert version == 2
-    assert set(diff) == {"title", "response_deadline", "posted_at", "attachment_links"}
+    # Only tracked fields make a version; the new posted date is stored but not versioned.
+    assert set(diff) == {"title", "response_deadline", "attachment_links"}
     assert diff["title"][1] == "IT Help Desk Support Services (Amendment 1)"
+    posted = conn.execute("SELECT snapshot ->> 'posted_at' FROM notice_versions WHERE version = 2")
+    assert (
+        posted.fetchone()
+        != conn.execute(
+            "SELECT snapshot ->> 'posted_at' FROM notice_versions WHERE version = 1"
+        ).fetchone()
+    )
     notice = conn.execute(
         "SELECT latest_version, solicitation_number_norm, office_code, set_aside_code FROM notices"
     ).fetchone()
