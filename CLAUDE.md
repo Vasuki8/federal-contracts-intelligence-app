@@ -74,7 +74,7 @@ cp .env.example .env                 # first time only
 docker compose up -d db              # local Postgres 16 (+ fci_test DB for pytest)
 uv sync                              # Python deps
 uv run alembic upgrade head          # migrate
-uv run alembic revision --rev-id 0003 -m "..."   # next migration (sequential ids)
+uv run alembic revision --rev-id 0005 -m "..."   # next migration (sequential ids)
 uv run app doctor                    # settings, DB connection, migration status
 uv run app status                    # last run + errors per job, backfill progress, row counts
 uv run ruff check && uv run ruff format --check && uv run mypy
@@ -89,9 +89,15 @@ uv run app ingest awards-backfill --years 5          # USAspending, resumable
 uv run app ingest awards-delta                       # daily
 uv run app ingest opportunities                      # daily SAM delta (run before backfill)
 uv run app ingest opportunities --backfill           # resume / start 12 months; no-op once complete
-# Hosted: GitHub → Actions → "Ingest" (daily schedule + manual awards-backfill); DB = Neon (README)
-
-# Planned (not built yet):
-uv run app match notices                             # M2
-uv run app recompetes refresh                        # M2
+uv run app ingest notice-extract                     # daily: every active notice + description (SAM CSV, no key)
+uv run app ingest notice-archive --fiscal-year 2026  # archived notices for one fiscal year (~1 GB file)
+uv run app match notices                             # link notices to incumbents (M2)
+uv run app recompetes refresh                        # contracts ending in 6-24 months
+uv run app match diagnose                            # matcher inputs and results
+uv run app match label-sheet --out labels.csv        # labeling spreadsheet (100 notices)
+uv run app match import-labels labels.csv            # merge answers into pipeline/tests/eval/labeled_matches.csv
+uv run app match eval --report docs/matching-eval.md # precision/recall of shown incumbents
+cd web && ADMIN_PASSWORD=... pnpm dev                # /admin/matches review queue (user: admin)
+# Hosted: GitHub → Actions → "Ingest": daily schedule; manual jobs awards-backfill,
+# notice-archive, match, match-diagnose, label-sheet, match-eval. DB = Neon (README)
 ```

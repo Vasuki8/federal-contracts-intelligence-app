@@ -31,7 +31,7 @@ Used by `app ingest opportunities` (backfill + daily delta).
 | Daily limit | "Request per day are limited based on the federal or non-federal or general roles." **No numbers on this page.** Other SAM APIs document 10/day (non-federal, no role) and 1,000/day (with a role, or federal). Our budget: `SAM_DAILY_REQUEST_LIMIT` (default 10), counted from `raw_files` since 00:00 UTC (⚠ verify the reset time). |
 | Errors | 404 = "No Data found" (treated as an empty page); 400 bad request; 500 server error. Messages listed for bad limit, date format, >1-year range, missing or invalid key. |
 | Versions | **"This API only provides the latest active version of the opportunity."** Older versions are only in SAM.gov Data Services extracts. |
-| Description text | `description` is a link (`.../noticedesc?noticeid=...`) that needs the API key, so **one request per notice**. Not fetched in M1. |
+| Description text | `description` is a link (`.../noticedesc?noticeid=...`) that needs the API key, so **one request per notice**. Not fetched: the text comes from the CSV extracts (section 4). |
 | Response envelope | `totalRecords`, `limit`, `offset`, `opportunitiesData[]`, `links[]` |
 
 **Record fields** (exact names). The field table and the example response disagree; the parser accepts both. ✅ Live responses use the **example** spellings:
@@ -150,18 +150,43 @@ Fixtures: `usaspending/docs_download_awards_response.json`,
 `docs_download_status_finished.json`, `award_d1_columns.txt`, synthetic
 `contracts_prime_award_summaries_*.csv`.
 
-## 4. SAM.gov Federal Hierarchy API (not used)
+## 4. SAM.gov Contract Opportunities CSV extracts (no key, no limit)
+Used by `app ingest notice-extract` (daily) and `app ingest notice-archive` (weekly).
+Checked on 2026-10-06 by downloading the first 200–300 KB of each file. The headers, the
+encoding and the row samples below come from those downloads.
+
+| Item | Value |
+|---|---|
+| Daily file | `https://s3.amazonaws.com/falextracts/Contract%20Opportunities/datagov/ContractOpportunitiesFullCSV.csv`. Every active notice. 210,934,998 bytes on 2026-10-06. Last-Modified around 03:30 UTC. |
+| Archive files | `https://s3.amazonaws.com/falextracts/Contract%20Opportunities/Archived%20Data/FY{year}_archived_opportunities.csv`. Notices archived in that fiscal year (`Active` = No). FY2024 1.15 GB, FY2025 1.16 GB, FY2026 0.98 GB. Refreshed weekly (Last-Modified Sun 2026-10-04 ~14:50 UTC). |
+| Listing | The bucket listing is denied, so file names follow SAM.gov Data Services → Contract Opportunities. |
+| Format | Quoted CSV, header row, Windows-1252 (cp1252) text (not UTF-8: e.g. byte 0x96 = en dash), CRLF. Descriptions contain newlines inside quotes. |
+| Columns (47) | `NoticeId, Title, Sol#, Department/Ind.Agency, CGAC, Sub-Tier, FPDS Code, Office, AAC Code, PostedDate, Type, BaseType, ArchiveType, ArchiveDate, SetASideCode, SetASide, ResponseDeadLine, NaicsCode, ClassificationCode, PopStreetAddress, PopCity, PopState, PopZip, PopCountry, Active, AwardNumber, AwardDate, Award$, Awardee, Primary/SecondaryContact{Title, Fullname, Email, Phone, Fax}, OrganizationType, State, City, ZipCode, CountryCode, AdditionalInfoLink, Link, Description`. The header is checked on every load. |
+| Codes | `CGAC` = department, `FPDS Code` = sub-tier, `AAC Code` = office. These are the same code systems as USAspending's `awarding_sub_agency_code` / `awarding_office_code`. Stored as `fullParentPathCode`-style `CGAC.FPDS.AAC`. |
+| Not in the CSV | Attachment links, the full NAICS list, award UEI. These come from the API. |
+
+✅ Findings (2026-10-06):
+- `NoticeId` is the API's `noticeId`, so both sources merge into the same notice.
+- `Description` is the full text, cut at 32,003 characters in the daily file.
+- `PostedDate` is `YYYY-MM-DD HH:MM:SS` with no timezone (stored as UTC). In archive files it can be recent for an old notice, e.g. a solicitation due 2021-04-30 shows `PostedDate` 2026-09-30.
+- `ResponseDeadLine` is ISO 8601 with an offset, or empty.
+- `Award$` is a plain number ("2118578.88"). `Awardee` holds the name and address in one string ("ERNST & YOUNG LLP New York NY 10001 USA").
+- Award notices for orders can put the contract vehicle in `AwardNumber` (`47QRAA22D000P`, a GSA OASIS IDV) and the order number in `Sol#` (`89233126FNA400784`).
+
+Fixture: `sam_extract/live_sample.csv`. It holds 7 real rows (2 daily, 5 FY2026 archive), with contact details replaced and descriptions cut to 1,500 characters.
+
+## 5. SAM.gov Federal Hierarchy API (not used)
 `_apidocs/fh-public-api.md`: `https://api.sam.gov/prod/federalorganizations/v1/orgs`.
 API key required; 10 requests/day non-federal, 1,000 federal; max 100 records per page.
 Agencies and offices come from notice and award codes instead (DECISIONS.md).
 
-## 5. GSA CALC+ API (Phase 2, not in MVP)
+## 6. GSA CALC+ API (Phase 2, not in MVP)
 `_apidocs/dx-calc-api.md`. Not read in detail yet.
 
-## 6. FPDS.gov: retired, do not use
+## 7. FPDS.gov: retired, do not use
 Per CLAUDE.md, the public FPDS site shut down on 2026-02-24. The Contract Awards API docs
 include an "FPDS vs SAM" PDF (`contract-awards/v1/FPDSvsSAM-ContractDataAPI.pdf`) for the
 field mapping.
 
-## 7. SBA Small Business Search: do not scrape
+## 8. SBA Small Business Search: do not scrape
 Per CLAUDE.md, use official APIs and bulk files only.

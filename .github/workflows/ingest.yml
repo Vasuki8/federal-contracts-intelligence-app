@@ -1,11 +1,13 @@
 name: Ingest
 
-# Loads SAM.gov notices and USAspending awards into the hosted database.
+# Loads notices and awards into the hosted database and runs the incumbent matcher.
 # Secrets: DATABASE_URL (Neon *direct* connection string, not the pooled one) and
 # SAM_API_KEY. Optional repository variable: SAM_DAILY_REQUEST_LIMIT (default 10).
 #
-# Daily (scheduled): notices delta, then the notices backfill resumes until it is
-# complete (within the SAM request budget), then the awards delta.
+# Daily (scheduled): every active notice from SAM.gov's CSV extract; on Mondays also the
+# archived notices of this and last fiscal year (skipped when the file hasn't changed);
+# the API notices delta and backfill (attachments, within the SAM request budget); the
+# awards delta; then the matcher and the recompete list.
 # By hand: GitHub → Actions → Ingest → Run workflow, and pick a job.
 on:
   schedule:
@@ -19,11 +21,24 @@ on:
           - daily
           - awards-backfill
           - opportunities-backfill
+          - notice-archive
+          - match
+          - match-diagnose
+          - label-sheet
+          - match-eval
         default: daily
       years:
         description: Years of award history (awards-backfill only)
         type: string
         default: "5"
+      fiscal_year:
+        description: Fiscal year to load (notice-archive only; blank = this and last year)
+        type: string
+        default: ""
+      label_size:
+        description: Notices in the labeling sheet (label-sheet only)
+        type: string
+        default: "100"
 
 permissions:
   contents: read
@@ -44,6 +59,8 @@ jobs:
       RAW_ARCHIVE_DIR: ${{ github.workspace }}/data/raw
       JOB: ${{ github.event_name == 'schedule' && 'daily' || inputs.job }}
       YEARS: ${{ inputs.years || '5' }}
+      FISCAL_YEAR: ${{ inputs.fiscal_year || '' }}
+      LABEL_SIZE: ${{ inputs.label_size || '100' }}
     steps:
       - name: Check secrets
         id: ready
@@ -63,10 +80,14 @@ jobs:
               exit 1
               ;;
           esac
-          if [ -z "$SAM_API_KEY" ] && [ "$JOB" != "awards-backfill" ]; then
-            echo "::error::Add the SAM_API_KEY repository secret."
-            exit 1
-          fi
+          case "$JOB" in
+            daily|opportunities-backfill)
+              if [ -z "$SAM_API_KEY" ]; then
+                echo "::error::Add the SAM_API_KEY repository secret."
+                exit 1
+              fi
+              ;;
+          esac
           echo "ok=true" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v7
         if: steps.ready.outputs.ok == 'true'
@@ -94,17 +115,74 @@ jobs:
       - name: Notices backfill
         if: steps.migrate.outcome == 'success' && env.JOB == 'opportunities-backfill'
         run: uv run app ingest opportunities --backfill
+      - name: Label sheet
+        if: steps.migrate.outcome == 'success' && env.JOB == 'label-sheet'
+        run: uv run app match label-sheet --size "$LABEL_SIZE" --out matching-labels.csv
+      - name: Upload label sheet
+        if: steps.migrate.outcome == 'success' && env.JOB == 'label-sheet'
+        uses: actions/upload-artifact@v7
+        with:
+          name: matching-labels-${{ github.run_id }}
+          path: matching-labels.csv
+          retention-days: 90
+      - name: Matcher evaluation
+        if: steps.migrate.outcome == 'success' && env.JOB == 'match-eval'
+        run: uv run app match eval --report matching-eval.md
+      - name: Upload evaluation report
+        if: steps.migrate.outcome == 'success' && env.JOB == 'match-eval'
+        uses: actions/upload-artifact@v7
+        with:
+          name: matching-eval-${{ github.run_id }}
+          path: matching-eval.md
+          retention-days: 90
 
       # Daily: each step runs even if an earlier one failed
-      - name: Notices delta
+      - name: Notices from SAM.gov's daily CSV
+        if: steps.migrate.outcome == 'success' && env.JOB == 'daily' && !cancelled()
+        run: uv run app ingest notice-extract
+      - name: Archived notices (Mondays, or notice-archive)
+        if: >-
+          steps.migrate.outcome == 'success' && !cancelled() &&
+          (env.JOB == 'notice-archive' || env.JOB == 'daily')
+        run: |
+          if [ "$JOB" = "daily" ] && [ "$(date -u +%u)" != "1" ]; then
+            echo "Archived notices are loaded on Mondays."
+            exit 0
+          fi
+          if [ -n "$FISCAL_YEAR" ]; then
+            years="$FISCAL_YEAR"
+          else
+            fy=$(date -u +%Y)
+            if [ "$(date -u +%-m)" -ge 10 ]; then fy=$((fy + 1)); fi
+            years="$((fy - 1)) $fy"
+          fi
+          for year in $years; do
+            uv run app ingest notice-archive --fiscal-year "$year"
+          done
+      - name: Notices delta (API)
         if: steps.migrate.outcome == 'success' && env.JOB == 'daily' && !cancelled()
         run: uv run app ingest opportunities
-      - name: Notices backfill (resumes until complete)
+      - name: Notices backfill (API, resumes until complete)
         if: steps.migrate.outcome == 'success' && env.JOB == 'daily' && !cancelled()
         run: uv run app ingest opportunities --backfill
       - name: Awards delta
         if: steps.migrate.outcome == 'success' && env.JOB == 'daily' && !cancelled()
         run: uv run app ingest awards-delta
+      - name: Match notices to incumbents
+        if: >-
+          steps.migrate.outcome == 'success' && !cancelled() &&
+          (env.JOB == 'daily' || env.JOB == 'match')
+        run: uv run app match notices
+      - name: Refresh recompetes
+        if: >-
+          steps.migrate.outcome == 'success' && !cancelled() &&
+          (env.JOB == 'daily' || env.JOB == 'match')
+        run: uv run app recompetes refresh
+      - name: Matcher diagnosis
+        if: >-
+          steps.migrate.outcome == 'success' && !cancelled() &&
+          (env.JOB == 'match' || env.JOB == 'match-diagnose')
+        run: uv run app match diagnose
 
       - name: Status
         if: steps.migrate.outcome == 'success' && !cancelled()

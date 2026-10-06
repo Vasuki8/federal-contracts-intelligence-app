@@ -165,3 +165,76 @@ Result (2026-10-06, 92 min, 6 USAspending requests):
 That makes 460,801 awards in total, plus 33,885 entities, 255 agencies and 2,631 offices. `pg_database_size` is 386 MB: awards 348 MB, entities 25 MB. Again no award appeared in two windows, and the FY2024 re-download wrote only the 1,184 awards from the 5 added days. Older years hold fewer awards (73k for FY2022 against 124k for FY2026).
 
 If space ever gets tight, the oldest awards can be deleted by `latest_action_date`. The backfill chunks stay marked done, so the deleted awards are not reloaded.
+
+## M2 — Incumbent matching and recompetes
+
+### 2026-10-06 · Notice text and history from SAM.gov's CSV extracts, not per-notice API calls
+The approved plan fetched each description through the API, at 1 request per notice against a 10-a-day limit. SAM.gov also publishes public CSV extracts on S3, with no key and no request limit. The user chose to switch:
+- **Daily file:** every active notice, with the full description, about 200 MB, published around 03:30 UTC.
+- **Yearly archive files:** notices archived in each fiscal year, about 1 GB each, refreshed weekly.
+
+`app ingest notice-extract` loads the daily file. `app ingest notice-archive --fiscal-year N` loads an archive file; it runs on Mondays for this and last fiscal year and is skipped when the file hasn't changed.
+
+All 962 notices loaded through the API search were active. That suggests the search leaves out archived notices, so the archive files are what provide the 12 months of history.
+
+**Raw archive.** Only the rows we load are kept: the vertical rows, unchanged, gzipped. Each file's `raw_files` entry records the full file's sha256, size, ETag and Last-Modified. Keeping a 1 GB file of all agencies every week would cost far more storage for data we never use, and SAM keeps publishing the archive files. A file a successful run already loaded (same sha256) is skipped.
+
+**Attachment text stays deferred.** It needs PDF/DOCX downloads, two new dependencies and much more raw storage. It makes sense after permanent object storage exists (M7). The API delta still supplies attachment links.
+
+### 2026-10-06 · Notices from two sources; versions only for real changes (changes M1)
+The API and the CSV describe the same notices with different coverage. The API has attachments, contacts and every NAICS code; the CSV has the description text and archived notices. Merging works like this:
+- **Authoritative fields.** Each source lists the fields it is authoritative for. Other fields only fill in values we don't know yet.
+- **No blanking.** A partial source (the CSV) never blanks a value: an empty cell is not evidence that the API's value went away.
+- **Deadlines.** A date-only deadline never replaces the same day's deadline that has a time.
+- **Tracked fields.** A new version is written only when a *tracked* field changes: title, solicitation number, type, response deadline, set-aside, NAICS, PSC, active, archive date, award number, attachments, description.
+- **Fill-ins.** Learning a value we didn't know (attachments for a notice first seen in the CSV, a first description) is a fill-in, not a change.
+- **Everything else** updates the row and the latest version's snapshot in place.
+
+M1 versioned every changed field. Its amendment test now expects the posted date out of the diff (the date is still stored). Without this, the two sources would create a false "amendment" every day, which matters for M4's amendment alerts. Descriptions are stored per version in `notice_descriptions`.
+
+### 2026-10-06 · How the matcher links a notice to its incumbent
+- **Links point to `award_key`.** PIIDs repeat across agencies; the PIID is stored for display.
+- **History links** (the award made *from* a notice) require the same sub-tier agency. Three kinds count:
+  - the solicitation number equals the award's solicitation id;
+  - the award notice's `award.number` equals the award's PIID;
+  - for orders, the award notice's solicitation number equals the order's PIID. Live award notices put the contract vehicle (e.g. a GSA OASIS IDV) in the award-number field and the order number in the solicitation number.
+- **Explicit references.** A contract number cited in the title or description that exists in `awards` gets score 0.97 when the award is from the same sub-tier and is not a contract vehicle. GWACs, Schedules and BOAs, or IDVs from another agency, are vehicles: they mark what the work is ordered under, and candidates ordered under the same vehicle score higher.
+- **Candidates:**
+  - in the same sub-tier, with either the same office or a related NAICS or PSC;
+  - ending (last possible end date, or ordering-period end for IDVs) between 6 months before and 18 months after the response deadline;
+  - of an incumbent award type, worth at least $25,000;
+  - not already replaced (the incumbent of an earlier notice that has since been awarded);
+  - at most 200 per notice.
+- **Scoring.** Weights live in `pipeline/config/matching.yaml`:
+
+  | Feature | Weight |
+  |---|---|
+  | Description | 0.35 |
+  | Office | 0.20 |
+  | End date | 0.15 |
+  | NAICS | 0.10 |
+  | PSC | 0.10 |
+  | Set-aside | 0.04 |
+  | Value | 0.03 |
+  | Vehicle | 0.03 |
+
+  The plan started with the description at 0.20. The first test showed that any contract from the same office with the same codes then scores about 0.8, so the margin rule would block almost every incumbent. The description is what tells concurrent contracts apart. Similarity is TF-IDF in plain Python, and the title is compared on its own as well as with the description, because a long description dilutes the score. A feature with no data takes a neutral value. These are starting values, to be tuned on the labels.
+- **What is shown.** The incumbent is shown when the top score is ≥ 0.8 and beats the runner-up by ≥ 0.15. Otherwise up to 3 possible incumbents scoring ≥ 0.35 are shown.
+- **What is stored.** The top 10 per notice, plus every explicit reference, each with plain-English reasons.
+- **Re-runs.** Unchanged rows are not rewritten. Human decisions (`confirmed`, `rejected`) are never changed by the matcher.
+- **Scope.** Notices past their archive date are skipped even if no file has marked them inactive yet.
+
+### 2026-10-06 · Admin review queue behind Basic auth until M3
+`/admin/matches` asks for HTTP Basic auth (user `admin`, password `ADMIN_PASSWORD`) in Next 16's request proxy (Next 16 renamed `middleware` to `proxy`), and checks again inside the server actions. Without `ADMIN_PASSWORD` the pages return 404. Each decision appends a `match_reviews` row and applies it in the same transaction. Auth.js accounts replace this in M3. The page isn't deployed until M7.
+
+### 2026-10-06 · Evaluating the matcher
+- **Labels.** The user labels in a spreadsheet (`app match label-sheet`): about 60% of the notices would show an incumbent and 40% have only possible ones. The sheet doesn't say which candidate the matcher picked, and candidates appear in a shuffled order, so the labeler isn't anchored.
+- **Import.** `app match import-labels` reads the answers (1–5, other, none, unsure) into `pipeline/tests/eval/labeled_matches.csv`.
+- **Scoring the matcher.** `app match eval` rebuilds the matcher's automatic decision from stored scores, ignoring human statuses, so confirmations in the admin queue don't inflate the result. Admin confirmations also count as labels; the spreadsheet wins for the same notice.
+- **Extra checks.** The report adds a threshold sweep, and a check on notices that cite a contract number: would the other features alone rank the cited contract first?
+
+### 2026-10-06 · Recompetes
+`app recompetes refresh` rebuilds `recompetes` in one transaction (TRUNCATE frees the old rows at once). It holds vertical awards of incumbent types worth at least $25,000 whose last possible end date (or ordering-period end) is 6–24 months away. Each row has its incumbent, agency and office names, value, set-aside, number of offers, and the notice where the award is the shown incumbent, if there is one.
+
+### 2026-10-06 · SAM's own report of the daily limit
+api.sam.gov may send `X-RateLimit-*` headers. Any it sends are stored with each raw response, and `app status` shows the most recent, so the real limit of the key is visible: 10 a day without a role in an entity registration, 1,000 with one.
