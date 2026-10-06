@@ -84,6 +84,7 @@ cd web && pnpm db:codegen            # regenerate src/db/types.ts after a migrat
 ./scripts/check.sh                   # run every CI check locally
 
 uv run app ingest sample-fixtures    # first live run: save real fixtures, compare with docs
+# (or GitHub → Actions → "Live sample" → Run workflow: same command, uses the SAM_API_KEY secret)
 uv run app ingest awards-backfill --years 5          # USAspending, resumable
 uv run app ingest awards-delta                       # daily
 uv run app ingest opportunities                      # daily SAM delta (run before backfill)

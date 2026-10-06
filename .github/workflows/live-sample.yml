@@ -1,0 +1,77 @@
+name: Live sample
+
+# Run by hand: GitHub → Actions → "Live sample" → Run workflow.
+# Calls SAM.gov (2 requests, using the SAM_API_KEY repository secret) and USAspending
+# (1 small download) for real, saves the responses as test fixtures, and reports where
+# they differ from the docs. Results: the job log and the "live-samples" artifact.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sample:
+    name: Fetch live samples
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: postgresql://fci:fci@localhost:5432/fci
+      SAM_API_KEY: ${{ secrets.SAM_API_KEY }}
+      SAM_DAILY_REQUEST_LIMIT: ${{ vars.SAM_DAILY_REQUEST_LIMIT || '10' }}
+      RAW_ARCHIVE_DIR: ${{ github.workspace }}/data/raw
+    services:
+      db:
+        image: postgres:16
+        env:
+          POSTGRES_USER: fci
+          POSTGRES_PASSWORD: fci
+          POSTGRES_DB: fci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fci -d fci"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Check the SAM_API_KEY secret exists
+        run: |
+          if [ -z "$SAM_API_KEY" ]; then
+            echo "::error::Repository secret SAM_API_KEY is missing. Add it under Settings → Secrets and variables → Actions → Secrets (not Variables)."
+            exit 1
+          fi
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: "0.12.23"
+          python-version: "3.12"
+      - run: uv sync --locked
+      - name: Migrate
+        run: uv run alembic upgrade head
+      - name: Fetch live samples
+        run: uv run app ingest sample-fixtures 2>&1 | tee sample-report.txt
+      - name: Run summary
+        if: always()
+        run: uv run app status 2>&1 | tee -a sample-report.txt
+      - name: Print saved fixtures
+        if: always()
+        run: |
+          for f in pipeline/tests/fixtures/*/live_*; do
+            [ -f "$f" ] || continue
+            echo "===== BEGIN $f ====="
+            cat "$f"
+            echo "===== END $f ====="
+          done
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: live-samples
+          path: |
+            sample-report.txt
+            pipeline/tests/fixtures/*/live_*
+            data/raw/
+          if-no-files-found: warn
+          retention-days: 14
