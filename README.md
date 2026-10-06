@@ -54,7 +54,7 @@ Check progress in each run's **Status** step (`app status`).
 
 ### Labeling matches (accuracy check for M2)
 
-1. **Actions → Ingest → Run workflow**, choose `label-sheet`. When it finishes, open the run and download the `matching-labels-…` artifact (a zip containing `matching-labels.csv`).
+1. **Actions → Ingest → Run workflow**, choose `label-sheet`. When it finishes, open the run in a desktop browser, signed in to GitHub (the GitHub mobile app doesn't list artifacts). On the run's **Summary** page, scroll to **Artifacts** at the bottom and click `matching-labels-<run id>`. It downloads as a zip; unzip it to get `matching-labels.csv`.
 2. Open the CSV in Excel or Google Sheets. For each notice, compare it (SAM.gov link) with candidates 1–5 (contract number, company, value, end date, USAspending link, reasons). In the `answer` column write:
    - the candidate's number, if it is the contract this notice replaces;
    - `other`, if the incumbent isn't listed (put its contract number in `notes` if you know it);
