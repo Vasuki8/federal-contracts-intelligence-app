@@ -150,3 +150,18 @@ The award count grew by exactly the rows written (124,568 → 306,905), so every
 Two changes support this:
 - **Reloads cost no storage.** Award and entity upserts now rewrite a row only if its content changed (`ROW(...) IS DISTINCT FROM ROW(...)`), still with the newer-`last_modified` rule. Before, every reload rewrote every row. That created dead row versions, and Neon counts their space until vacuum reuses it. The 3-year run re-downloads FY2026, because its window now starts 1 October instead of 6 October, but writes only the rows that changed. `updated_at` now means "last changed". `raw_file_id` keeps pointing at the first file that had the current content.
 - **`app status` shows storage:** database size (`pg_database_size`), the 5 largest tables with their indexes, and the raw archive. Neon's dashboard figure can be higher because it also counts restore history.
+
+### 2026-10-06 · Extended to 5 years of award history (BUILD_PLAN's target)
+After the 3-year load, Neon showed the project at 287.8 MB, close to `pg_database_size` (263 MB). Projected at about 440 MB for 5 years, that leaves room for notices and M2, so the user asked for the full 5 years. The Ingest workflow's default is back to 5.
+
+Result (2026-10-06, 92 min, 6 USAspending requests):
+
+| Window (action date) | Rows | Written |
+|---|---|---|
+| 2021-10-06 – 2022-09-30 | 73,460 | 73,460 |
+| FY2023 | 79,252 | 79,252 |
+| FY2024 (re-download, now from 1 Oct) | 86,712 | 1,184 |
+
+That makes 460,801 awards in total, plus 33,885 entities, 255 agencies and 2,631 offices. `pg_database_size` is 386 MB: awards 348 MB, entities 25 MB. Again no award appeared in two windows, and the FY2024 re-download wrote only the 1,184 awards from the 5 added days. Older years hold fewer awards (73k for FY2022 against 124k for FY2026).
+
+If space ever gets tight, the oldest awards can be deleted by `latest_action_date`. The backfill chunks stay marked done, so the deleted awards are not reloaded.

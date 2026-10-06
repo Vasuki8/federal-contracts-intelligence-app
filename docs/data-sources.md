@@ -138,10 +138,11 @@ Business-type flags: `c8a_program_participant`, `sba_certified_8a_joint_venture`
   FY2025 files shared no award with each other or with FY2026: the award count grew by
   exactly the rows written. An award modified later moves to a newer window; the daily
   `last_modified_date` delta picks that change up.
-- Size (Neon, 2026-10-06), 11 vertical codes. Awards per window: about 124,400 (FY2026),
-  96,200 (FY2025) and 85,500 (2023-10-06 to 2024-09-30). With 306,905 awards and 27,689
-  entities, `pg_database_size` is 263 MB, about 760 bytes per award with indexes. Neon's
-  dashboard showed about 200 MB when the database held the first 124,568 awards.
+- Size (Neon, 2026-10-06), 11 vertical codes, awards per fiscal-year window: FY2022
+  73,460; FY2023 79,252; FY2024 86,712; FY2025 96,220; FY2026 124,379. Five years hold
+  460,801 awards and 33,885 entities, and `pg_database_size` is 386 MB (awards 348 MB
+  with indexes, about 760 bytes per award). Neon's project storage tracks
+  `pg_database_size` plus about 10% (287.8 MB against 263 MB at 3 years).
 
 ⚠ still to verify: whether IDVs come in the same file (the sample had only `A`, `C`, `D`).
 
